@@ -50,7 +50,7 @@ export default function SkuDetailPage() {
         <div className="tile"><div className="label">運送中</div><div className="value"><Qty n={s.in_transit} kind="transit" /></div></div>
         <div className="tile"><div className="label">美國倉</div><div className="value"><Qty n={s.us_on_hand} /></div><div className="sub">已預留 {fmtInt(s.us_reserved)}</div></div>
         <div className="tile"><div className="label">美國可銷售</div><div className="value"><Qty n={s.us_available} /></div>
-          {s.can_view_cost && !s.is_bundle && <div className="sub">庫存成本 {fmtUsd(s.inventory_value_usd)}</div>}</div>
+          {s.can_view_cost && !s.is_bundle && <div className="sub">全部庫存成本（含運送中）{fmtUsd(s.inventory_value_usd)}</div>}</div>
       </div>
 
       <div className="grid-2">
@@ -132,7 +132,7 @@ export default function SkuDetailPage() {
                   {moves.data.items.map((m) => (
                     <tr key={m.id}>
                       <td className="lead small">{fmtDateTime(m.occurred_at, me?.timezone)}</td>
-                      <td data-label="類型"><span className="badge">{MOVEMENT_LABEL[m.movement_type] ?? m.movement_type}</span></td>
+                      <td data-label="類型"><span className="badge">{movementLabel(m)}</span></td>
                       <td data-label="從 → 到" className="small">{LOCATION_LABEL[m.from_location]} → {LOCATION_LABEL[m.to_location]}</td>
                       <td data-label="數量" className="num">{fmtInt(m.qty)}</td>
                       <td data-label="批次" className="mono">{m.lot_no}</td>
@@ -147,6 +147,14 @@ export default function SkuDetailPage() {
       )}
     </>
   );
+}
+
+function movementLabel(m: Movement): string {
+  // Purchased goods now ship straight from Japan to the US: supplier -> in transit is a shipment.
+  if (m.movement_type === "purchase_receipt" && m.to_location === "IN_TRANSIT") return "日本寄出";
+  if (m.movement_type === "purchase_receipt" && m.to_location === "US_MAIN") return "採購直接入美國倉";
+  if (m.movement_type === "transfer_receive") return "美國簽收";
+  return MOVEMENT_LABEL[m.movement_type] ?? m.movement_type;
 }
 
 function SkuInfo({ sku }: { sku: SkuDetail }) {

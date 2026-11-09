@@ -100,7 +100,7 @@ export default function InventoryPage() {
                   <th className="num">美國倉</th>
                   <th className="num">已預留</th>
                   <th className="num">可銷售</th>
-                  {showCost && <th className="num">庫存成本</th>}
+                  {showCost && <th className="num">庫存成本（含運送中）</th>}
                   <th>最近入庫</th>
                 </tr>
               </thead>

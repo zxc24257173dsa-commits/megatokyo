@@ -83,7 +83,7 @@ def ship_line(db: Session, *, actor_id: int, line_id: int, qty: int, shipped_on:
     move = post_movement(db, sku_id=line.sku_id, lot_id=lot.id, movement_type="purchase_receipt",
                          from_code="SUPPLIER", to_code="IN_TRANSIT", qty=qty, key=key, ref_type="purchase_line",
                          ref_id=line.id, actor_id=actor_id, occurred_at=when,
-                         note=f"shipped from Japan {shipped + qty}/{line.qty}; ETA {eta.isoformat()}")
+                         note=f"日本寄出 {shipped + qty}/{line.qty}，預計 {eta.isoformat()} 到美國")
     audit.record(db, action="purchase_line.shipped", entity_type="purchase_line", entity_id=line.id,
                  actor_id=actor_id, after={"qty": qty, "shipped_total": shipped + qty, "purchased": line.qty,
                                            "lot_id": lot.id, "eta": eta.isoformat(),
@@ -119,7 +119,7 @@ def receive_line_in_us(db: Session, *, actor_id: int, line_id: int, qty: int, re
         take = min(r.qty, remaining)
         m = post_movement(db, sku_id=line.sku_id, lot_id=r.lot_id, movement_type="transfer_receive",
                           from_code="IN_TRANSIT", to_code="US_MAIN", qty=take, key=f"{prefix}:lot:{r.lot_id}",
-                          ref_type="purchase_line", ref_id=line.id, actor_id=actor_id, note="received in the US",
+                          ref_type="purchase_line", ref_id=line.id, actor_id=actor_id, note="美國簽收",
                           occurred_at=when)
         moves.append(m)
         remaining -= take
