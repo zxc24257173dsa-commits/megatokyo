@@ -6,8 +6,10 @@ import { AuthProvider, useAuth } from "./auth";
 import Layout from "./components/Layout";
 import { Loading } from "./components/ui";
 import { ForcedMfaPage, ForcedPasswordPage, LoginPage } from "./pages/AuthPages";
+import { ImportDetailPage, ImportsPage } from "./pages/ImportPages";
 import InventoryPage from "./pages/InventoryPage";
 import { NewBundlePage, NewProductPage } from "./pages/ProductForms";
+import { PurchaseBatchPage, PurchaseBatchesPage } from "./pages/PurchasingPages";
 import SkuDetailPage from "./pages/SkuDetailPage";
 import { StockCountPage, StockCountsPage, StockOperationsPage } from "./pages/StockPages";
 import { AccountPage, UsersPage } from "./pages/UsersPage";
@@ -36,6 +38,10 @@ function Gate() {
         <Route path="stock/operations" element={<StockOperationsPage />} />
         <Route path="stock/counts" element={<StockCountsPage />} />
         <Route path="stock/counts/:id" element={<StockCountPage />} />
+        <Route path="imports" element={<ImportsPage />} />
+        <Route path="imports/:id" element={<ImportDetailPage />} />
+        <Route path="purchasing" element={<PurchaseBatchesPage />} />
+        <Route path="purchasing/:id" element={<PurchaseBatchPage />} />
         <Route path="users" element={<UsersPage />} />
         <Route path="account" element={<AccountPage />} />
         <Route path="*" element={<Navigate to="/" />} />

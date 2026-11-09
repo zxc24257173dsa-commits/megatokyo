@@ -34,8 +34,16 @@ class PurchaseBatch(IdMixin, TimestampMixin, Base):
 
 
 class PurchaseLine(IdMixin, CreatedMixin, Base):
-    """All *_orig amounts are in currency_orig. fx_rate_to_base converts currency_orig -> USD
-    (1 unit of currency_orig = fx_rate_to_base USD). Landed cost is stored in USD."""
+    """One SKU in a purchase batch (a cost record). Matches the owner's cost sheet:
+    unit price in the purchase currency; shipping / freight / duty already in USD.
+
+        purchase_cost_base = qty * unit_price_orig * fx_rate_to_base
+        landed_total_base  = purchase_cost_base + domestic_shipping_base + intl_freight_base + duty_other_base
+        landed_unit_cost_base = landed_total_base / qty
+
+    Receiving into the Japan warehouse is a separate step that creates FIFO lots
+    (inventory_lots.purchase_line_id); the received quantity can never exceed qty.
+    """
 
     __tablename__ = "purchase_lines"
 
@@ -48,13 +56,14 @@ class PurchaseLine(IdMixin, CreatedMixin, Base):
     fx_rate_to_base: Mapped[Decimal] = mapped_column(Numeric(18, 8), nullable=False)
     fx_rate_date: Mapped[date | None] = mapped_column(Date)
     fx_source: Mapped[str | None] = mapped_column(String(60))
-    domestic_shipping_orig: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, server_default="0")
-    intl_shipping_orig: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, server_default="0")
-    duty_orig: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, server_default="0")
-    other_cost_orig: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, server_default="0")
+    purchase_cost_base: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    domestic_shipping_base: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, server_default="0")
+    intl_freight_base: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, server_default="0")
+    duty_other_base: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, server_default="0")
     landed_total_base: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
     landed_unit_cost_base: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
     landed_cost_method: Mapped[str] = mapped_column(String(20), nullable=False, server_default="computed")
+    note: Mapped[str | None] = mapped_column(Text)
     source_import_row_id: Mapped[int | None] = mapped_column(ForeignKey("import_rows.id"))
 
     __table_args__ = (
@@ -63,7 +72,7 @@ class PurchaseLine(IdMixin, CreatedMixin, Base):
         CheckConstraint("unit_price_orig >= 0", name="price_nonneg"),
         CheckConstraint("fx_rate_to_base > 0", name="fx_positive"),
         CheckConstraint(
-            "domestic_shipping_orig >= 0 AND intl_shipping_orig >= 0 AND duty_orig >= 0 AND other_cost_orig >= 0",
+            "purchase_cost_base >= 0 AND domestic_shipping_base >= 0 AND intl_freight_base >= 0 AND duty_other_base >= 0",
             name="costs_nonneg",
         ),
         CheckConstraint("landed_total_base >= 0 AND landed_unit_cost_base >= 0", name="landed_nonneg"),

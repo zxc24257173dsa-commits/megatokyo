@@ -35,6 +35,8 @@ const paths: Record<string, string> = {
   sliders: "M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6",
   users: "M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.9M16 3.1a4 4 0 010 7.8",
   user: "M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2M12 11a4 4 0 100-8 4 4 0 000 8z",
+  truck: "M1 4h14v12H1zM15 9h4l3 3v4h-7M5.5 19.5a1.5 1.5 0 100-3 1.5 1.5 0 000 3zM18.5 19.5a1.5 1.5 0 100-3 1.5 1.5 0 000 3z",
+  upload: "M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12",
 };
 export function Icon({ name }: { name: keyof typeof paths | string }) {
   return (

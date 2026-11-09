@@ -9,7 +9,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base import Base, CreatedMixin, IdMixin, TimestampMixin
 from app.models._util import check_in
 
-IMPORT_TYPES = ("purchase_cost", "whatnot_orders", "whatnot_livestream", "whatnot_payout", "expenses", "opening_stock")
+IMPORT_TYPES = ("purchase_cost", "sku_master", "whatnot_orders", "whatnot_livestream", "whatnot_payout", "expenses", "opening_stock")
 IMPORT_STATUSES = ("uploaded", "parsed", "validated", "committed", "failed", "cancelled")
 
 

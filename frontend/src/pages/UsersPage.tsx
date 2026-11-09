@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from "react";
+import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import { useAuth } from "../auth";
@@ -139,14 +140,18 @@ function NewUserForm({ onCreated }: { onCreated: (u: UserRow) => void }) {
 }
 
 export function AccountPage() {
-  const { me, logout } = useAuth();
+  const { me, logout, can } = useAuth();
   const [mfaDone, setMfaDone] = useState(false);
   if (!me) return null;
   return (
     <>
       <div className="page-head">
         <h1>我的帳號</h1>
-        <button className="btn" onClick={() => void logout()}>登出</button>
+        <div className="row">
+          {(can("import.cost") || can("catalog.edit")) && <Link className="btn" to="/imports">試算表匯入</Link>}
+          {can("users.manage") && <Link className="btn" to="/users">使用者</Link>}
+          <button className="btn" onClick={() => void logout()}>登出</button>
+        </div>
       </div>
       <div className="grid-2">
         <div className="card">

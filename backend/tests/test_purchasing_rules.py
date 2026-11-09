@@ -11,8 +11,8 @@ def batch_with_line(db):
                    {"n": uid("PB-")}).scalar_one()
     line = db.execute(text("""
         INSERT INTO purchase_lines (batch_id, line_no, sku_id, qty, unit_price_orig, currency_orig, fx_rate_to_base,
-                                    landed_total_base, landed_unit_cost_base)
-        VALUES (:b, 1, :s, 10, 1500, 'JPY', 0.0066, 99.0, 9.9) RETURNING id"""), {"b": b, "s": sku}).scalar_one()
+                                    purchase_cost_base, landed_total_base, landed_unit_cost_base)
+        VALUES (:b, 1, :s, 10, 1500, 'JPY', 0.0066, 99.0, 99.0, 9.9) RETURNING id"""), {"b": b, "s": sku}).scalar_one()
     return b, line, sku
 
 
@@ -28,8 +28,8 @@ def test_confirmed_batch_cost_cannot_be_overwritten(db):
         ("UPDATE purchase_lines SET unit_price_orig = 1 WHERE id = :l", {"l": line}),
         ("DELETE FROM purchase_lines WHERE id = :l", {"l": line}),
         ("""INSERT INTO purchase_lines (batch_id, line_no, sku_id, qty, unit_price_orig, currency_orig,
-               fx_rate_to_base, landed_total_base, landed_unit_cost_base)
-            VALUES (:b, 2, :s, 1, 1, 'JPY', 0.0066, 0.0066, 0.0066)""", {"b": b, "s": sku}),
+               fx_rate_to_base, purchase_cost_base, landed_total_base, landed_unit_cost_base)
+            VALUES (:b, 2, :s, 1, 1, 'JPY', 0.0066, 0.0066, 0.0066, 0.0066)""", {"b": b, "s": sku}),
         ("UPDATE purchase_batches SET status = 'draft' WHERE id = :b", {"b": b}),
         ("UPDATE purchase_batches SET purchase_date = '2026-01-01' WHERE id = :b", {"b": b}),
         ("DELETE FROM purchase_batches WHERE id = :b", {"b": b}),

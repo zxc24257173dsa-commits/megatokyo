@@ -6,6 +6,7 @@
 - 已確認的業務決策：[`docs/01-decisions.md`](docs/01-decisions.md)
 - 登入與權限：[`docs/02-auth-and-permissions.md`](docs/02-auth-and-permissions.md)
 - 商品與庫存：[`docs/03-catalog-and-inventory.md`](docs/03-catalog-and-inventory.md)
+- 成本匯入：[`docs/04-cost-import.md`](docs/04-cost-import.md)
 
 ## 目前進度
 
@@ -14,7 +15,8 @@
 | 1 系統架構與資料庫 | ✅ 完成（57 張資料表、資料庫層完整性規則、41 項自動測試） |
 | 2 登入、權限與多地同步 | ✅ 完成（**Google 帳號一鍵登入**、備用密碼＋雙因素、RBAC、稽核） |
 | 3 商品與多倉庫庫存 | ✅ 完成（商品/規格/組合/照片、期初庫存、調整、盤點、FIFO 批次、網頁介面；瀏覽器端對端測試） |
-| 4 CSV / Excel 成本匯入 | 待開始（需要成本試算表） |
+| 4 CSV / Excel 成本匯入 | ✅ 完成（依暫定範本；多工作表、自動欄位對應、預覽、FIFO 入庫；正式範本待業主提供） |
+| 5 Whatnot API 與訂單同步 | 待開始 |
 
 ## 本機開發
 

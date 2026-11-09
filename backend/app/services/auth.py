@@ -20,6 +20,7 @@ def _invalid_login() -> AppError:
 
 # Restrictions: a user with any of these can only use self-service auth endpoints until resolved.
 PASSWORD_CHANGE_REQUIRED = "password_change_required"
+REUSE_INTERVAL_SECONDS = 30
 MFA_SETUP_REQUIRED = "mfa_setup_required"
 
 
@@ -193,9 +194,13 @@ def refresh(db: Session, raw_refresh: str | None, ctx: RequestContext) -> Issued
         raise invalid
     user = db.get(User, rt.user_id)
     if rt.revoked_at is not None:
-        # A rotated token presented again within a few seconds is usually two browser tabs
-        # refreshing at once; anything else is treated as theft and the whole session family dies.
-        benign = rt.revoked_reason == "rotated" and rt.revoked_at > _now() - timedelta(seconds=30)
+        # A token rotated moments ago and presented again is a second tab / quick reload racing
+        # the first refresh: give that tab its own token in the same session (reuse interval).
+        # Anything else is treated as theft and the whole session family dies.
+        benign = rt.revoked_reason == "rotated" and rt.revoked_at > _now() - timedelta(seconds=REUSE_INTERVAL_SECONDS)
+        if benign and user is not None and user.is_active and rt.expires_at > _now():
+            session, _ = _issue_session(db, user, ctx, family_id=rt.family_id, auth_method=rt.auth_method)
+            return session
         if not benign:
             db.execute(
                 update(RefreshToken)

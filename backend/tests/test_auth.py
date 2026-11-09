@@ -72,6 +72,21 @@ def test_refresh_rotation_and_reuse_detection(api, db):
     assert "auth.refresh_reuse_detected" in actions(db, u.id)
 
 
+def test_parallel_tabs_within_reuse_interval_stay_signed_in(api, db):
+    """Two tabs (or a quick double reload) refresh with the same cookie at nearly the same time."""
+    u = make_user(db)
+    login(api, u.email)
+    cookie = api.cookies.get("erp_refresh")
+    first = api.post("/api/v1/auth/refresh")
+    assert first.status_code == 200
+    api.cookies.clear()
+    api.cookies.set("erp_refresh", cookie, path="/api/v1/auth")  # second tab still has the old cookie
+    second = api.post("/api/v1/auth/refresh")
+    assert second.status_code == 200
+    assert api.get("/api/v1/auth/me", headers=auth_header(second.json()["access_token"])).status_code == 200
+    assert "auth.refresh_reuse_detected" not in actions(db, u.id)
+
+
 def test_logout_revokes_refresh(api, db):
     u = make_user(db)
     login(api, u.email)

@@ -123,6 +123,16 @@ const MESSAGES: Record<string, string> = {
   google_exchange_failed: "Google 登入失敗，請再試一次",
   google_unreachable: "暫時無法連線到 Google，請稍後再試",
   google_cancelled: "已取消 Google 登入",
+  file_already_imported: "這個檔案已經匯入過了（同一份檔案不能匯入兩次）",
+  unreadable_file: "檔案無法讀取，請確認是 .xlsx 或 .csv",
+  too_many_rows: "工作表列數太多（上限 20,000 列）",
+  import_has_errors: "有錯誤的列；請修正檔案，或勾選「略過有錯誤的列」",
+  new_skus_not_confirmed: "有系統中還沒有的 SKU，請勾選「一併建立」",
+  nothing_to_import: "沒有可以匯入的資料列",
+  import_closed: "這次匯入已經完成或取消",
+  over_receipt: "入庫數量超過採購數量",
+  future_date: "日期不能是未來",
+  invalid_mapping: "每個欄位必須對應到不同的欄",
 };
 
 export function messageFor(code: string): string {
