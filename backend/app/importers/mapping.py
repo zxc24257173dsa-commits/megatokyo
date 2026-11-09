@@ -55,11 +55,23 @@ SKU_MASTER_FIELDS = (
     FieldDef("notes", "備註", False, ("notes", "note", "備註")),
 )
 
+WHATNOT_ORDER_FIELDS = (
+    FieldDef("order_id", "訂單編號（order_numeric_id）", True, ("order numeric id",)),
+    FieldDef("title", "商品名稱", True, ("product name", "listing title", "title")),
+    FieldDef("qty", "數量", True, ("product quantity", "quantity", "qty")),
+    FieldDef("price", "成交價", True, ("original item price", "item price", "sold price", "price")),
+    FieldDef("placed_at", "下單時間（UTC）", False, ("placed at", "order date", "created at")),
+    FieldDef("status_flag", "取消／失敗", False, ("cancelled or failed", "status")),
+    FieldDef("shipment_id", "Whatnot 出貨編號", False, ("shipment id",)),
+    FieldDef("sku", "SKU", False, ("sku",)),
+)
+
 # Columns the template has but we deliberately never import (the ERP computes / owns these).
 IGNORED_SKU_MASTER_COLUMNS = ("current standard cost usd", "japan inventory", "us inventory", "in transit inventory",
                               "reserved inventory", "available us inventory")
 
-FIELDS = {"purchase_cost": PURCHASE_COST_FIELDS, "sku_master": SKU_MASTER_FIELDS}
+FIELDS = {"purchase_cost": PURCHASE_COST_FIELDS, "sku_master": SKU_MASTER_FIELDS,
+          "whatnot_orders": WHATNOT_ORDER_FIELDS}
 HEADER_SCAN_ROWS = 15
 
 

@@ -15,7 +15,7 @@ from app.core.config import get_settings
 from app.integrations.whatnot import processing as P
 from app.integrations.whatnot.client import WhatnotClient
 from app.models.integration import SyncRun
-from app.models.sales import SHIPPED_STATUSES, SalesOrder, SalesOrderLine, SalesShipment
+from app.models.sales import SHIPPED_STATUSES, Livestream, SalesOrder, SalesOrderLine, SalesShipment
 
 log = logging.getLogger("app.whatnot.sync")
 SYNC_LOCK = 7_420_105
@@ -80,6 +80,15 @@ def sync_shows(db: Session, client: WhatnotClient, stats: dict, max_shows: int =
         _each(db, stats, "shows", lambda s=show: P.upsert_show(db, s, "api"))
 
 
+def refresh_show_details(db: Session, client: WhatnotClient, stats: dict) -> None:
+    """Shows first seen through an order (only the id is known) or not finished yet: fetch them by id."""
+    ids = list(db.scalars(select(Livestream.external_id).where(
+        Livestream.platform == "whatnot", Livestream.external_id.is_not(None),
+        (Livestream.title.is_(None)) | (Livestream.status.in_(("scheduled", "live", "stopped")))).limit(200)))
+    for sid in ids:
+        _each(db, stats, "show_details", lambda i=sid: P.upsert_show(db, client.show(i), "api"))
+
+
 def retry_exceptions(db: Session, stats: dict) -> None:
     """Lines waiting on stock / mapping get another chance (e.g. after a receipt was posted)."""
     ids = list(db.scalars(select(SalesOrderLine.order_id).distinct()
@@ -108,6 +117,8 @@ def run(db: Session, client: WhatnotClient, *, days: int | None = None, kinds=("
             sync_orders(db, client, run.window_start, stats)
         if "shipments" in kinds:
             sync_shipments(db, client, run.window_start, stats)
+        if "shows" in kinds:
+            refresh_show_details(db, client, stats)
         retry_exceptions(db, stats)
         run.status = "succeeded" if not stats.get("failed") else "failed"
     except Exception as exc:

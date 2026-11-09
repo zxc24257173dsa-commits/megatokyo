@@ -16,7 +16,7 @@ from app.services import purchasing
 from app.services.audit import RequestContext
 
 router = APIRouter(tags=["imports"])
-TYPE_PERMISSION = {"purchase_cost": "import.cost", "sku_master": "catalog.edit"}
+TYPE_PERMISSION = {"purchase_cost": "import.cost", "sku_master": "catalog.edit", "whatnot_orders": "import.sales"}
 
 
 def _check_type_permission(import_type: str, current: CurrentUser) -> None:
@@ -112,6 +112,7 @@ def set_mapping(job_id: int, body: MappingIn, current: CurrentUser = Depends(get
 class CommitIn(BaseModel):
     create_missing_skus: bool = False
     skip_error_rows: bool = False
+    mark_shipped: bool = False  # Whatnot order exports: these orders have all been shipped
 
 
 @router.post("/imports/{job_id}/commit")
@@ -121,7 +122,7 @@ def commit_import(job_id: int, body: CommitIn, current: CurrentUser = Depends(ge
     if job.import_type == "purchase_cost" and body.create_missing_skus and "catalog.edit" not in current.permissions:
         raise AppError("forbidden", "Creating new SKUs needs catalog.edit", 403, {"missing": ["catalog.edit"]})
     summary = engine.commit(db, actor_id=current.id, job=job, create_missing_skus=body.create_missing_skus,
-                            skip_error_rows=body.skip_error_rows, ctx=ctx)
+                            skip_error_rows=body.skip_error_rows, ctx=ctx, mark_shipped=body.mark_shipped)
     db.commit()
     return {"job": _job_out(db, job, include_preview=False), "summary": summary}
 

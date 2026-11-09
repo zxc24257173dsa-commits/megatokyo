@@ -15,13 +15,25 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
-from app.importers import mapping, normalize, purchase_cost, reader, sku_master
+from app.importers import mapping, normalize, purchase_cost, reader, sku_master, whatnot_orders
 from app.models.imports import ImportJob, ImportMappingTemplate, ImportRow
 from app.services import audit, storage
 from app.services.audit import RequestContext
 
 MAX_FILE_BYTES = 10 * 1024 * 1024
-HANDLERS = {"purchase_cost": purchase_cost, "sku_master": sku_master}
+HANDLERS = {"purchase_cost": purchase_cost, "sku_master": sku_master, "whatnot_orders": whatnot_orders}
+
+
+def _mask_private(import_type: str, rows: list[list]) -> list[list]:
+    """Blank columns holding personal data (e.g. buyer address) in the stored preview."""
+    private = getattr(HANDLERS[import_type], "PRIVATE_HEADERS", None)
+    if not private:
+        return rows
+    cols: set[int] = set()
+    for r in rows:
+        cols |= {i for i, h in enumerate(r) if normalize.header_key(h) in private}
+    return [[("（不保存）" if i in cols and c is not None and normalize.header_key(c) not in private else c)
+             for i, c in enumerate(r)] for r in rows]
 PREVIEW_ROWS = 15
 
 
@@ -54,7 +66,8 @@ def create_job(db: Session, *, actor_id: int, import_type: str, filename: str, d
     job = ImportJob(import_type=import_type, filename=filename[:255], file_sha256=digest, size_bytes=len(data),
                     storage_key=key, created_by=actor_id,
                     sheets=[{"name": s.name, "rows": len(s.rows),
-                             "preview": [[normalize.jsonable(c) for c in r] for r in s.rows[:PREVIEW_ROWS]]}
+                             "preview": _mask_private(import_type, [[normalize.jsonable(c) for c in r]
+                                                                    for r in s.rows[:PREVIEW_ROWS]])}
                             for s in sheets])
     db.add(job)
     db.flush()
@@ -166,7 +179,7 @@ def _stats(results) -> dict:
 
 
 def commit(db: Session, *, actor_id: int, job: ImportJob, create_missing_skus: bool, skip_error_rows: bool,
-           ctx: RequestContext) -> dict:
+           ctx: RequestContext, mark_shipped: bool = False) -> dict:
     _require_open(job)
     if job.status != "validated":
         raise AppError("import_not_ready", "Map the required columns first", 409, job.stats)
@@ -181,8 +194,9 @@ def commit(db: Session, *, actor_id: int, job: ImportJob, create_missing_skus: b
     row_ids = dict(db.execute(select(ImportRow.row_number, ImportRow.id).where(ImportRow.job_id == job.id)).all())
     for r in results:
         r.normalized["_import_row_id"] = row_ids.get(r.row_number)
+    extra = {"mark_shipped": mark_shipped} if job.import_type == "whatnot_orders" else {}
     summary = HANDLERS[job.import_type].commit(db, actor_id=actor_id, job_id=job.id, results=results,
-                                               create_missing_skus=create_missing_skus, ctx=ctx)
+                                               create_missing_skus=create_missing_skus, ctx=ctx, **extra)
     summary["skipped_error_rows"] = len(errors)
     job.status, job.committed_by, job.committed_at = "committed", actor_id, datetime.now(UTC)
     job.stats = {**_stats(results), "result": summary}
@@ -192,6 +206,7 @@ def commit(db: Session, *, actor_id: int, job: ImportJob, create_missing_skus: b
             db.flush()
     except IntegrityError:
         raise AppError("file_already_imported", "This exact file was already imported", 409) from None
+    _drop_private_file(job)
     audit.record(db, action="import.committed", entity_type="import_job", entity_id=job.id, actor_id=actor_id,
                  after={"type": job.import_type, "filename": job.filename, **summary}, ctx=ctx)
     return summary
@@ -210,8 +225,15 @@ def _remember_layout(db: Session, job: ImportJob, sheets: list[reader.Sheet], ac
         tpl.mapping = cm["columns"]
 
 
+def _drop_private_file(job: ImportJob) -> None:
+    """Files with buyer data are kept only while the import is open."""
+    if getattr(HANDLERS[job.import_type], "DELETE_FILE_AFTER", False):
+        storage.delete(job.storage_key)
+
+
 def cancel(db: Session, *, actor_id: int, job: ImportJob, ctx: RequestContext) -> ImportJob:
     _require_open(job)
     job.status = "cancelled"
+    _drop_private_file(job)
     audit.record(db, action="import.cancelled", entity_type="import_job", entity_id=job.id, actor_id=actor_id, ctx=ctx)
     return job

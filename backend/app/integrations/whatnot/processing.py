@@ -17,6 +17,7 @@ report (Phase 5b/6), not from guessed rates.
 """
 import hashlib
 import json
+import re
 from datetime import UTC, date, datetime
 from decimal import ROUND_HALF_UP, Decimal
 from zoneinfo import ZoneInfo
@@ -129,6 +130,30 @@ def upsert_show(db: Session, show: dict, source: str) -> Livestream:
 
 # ---------- SKU resolution ----------
 
+TITLE_PLATFORM = "whatnot_title"  # mapping rule: listing title without its "#N" auction number
+
+
+def title_key(title: str | None) -> str | None:
+    """'1x PERONA OP14-111 PROMO ... #12' -> stable key shared by every auction of that product."""
+    if not title:
+        return None
+    t = re.sub(r"\s*#\d+\s*$", "", title.strip())
+    t = re.sub(r"\s+", " ", t).upper()
+    return "t:" + hashlib.sha256(t.encode()).hexdigest()[:40] if t else None
+
+
+def clean_title(title: str | None) -> str | None:
+    return re.sub(r"\s*#\d+\s*$", "", title.strip())[:128] if title else None
+
+
+def save_title_rule(db: Session, title: str | None, sku_id: int, actor_id: int | None = None) -> None:
+    key = title_key(title)
+    if key and not db.scalar(select(ExternalSkuMapping.id).where(ExternalSkuMapping.platform == TITLE_PLATFORM,
+                                                                 ExternalSkuMapping.external_product_id == key)):
+        db.add(ExternalSkuMapping(platform=TITLE_PLATFORM, external_product_id=key, external_sku=clean_title(title),
+                                  sku_id=sku_id, created_by=actor_id))
+        db.flush()
+
 def resolve_sku(db: Session, item: dict) -> int | None:
     pid, vid = item.get("product_id"), item.get("variant_id")
     if pid:
@@ -155,6 +180,10 @@ def resolve_sku(db: Session, item: dict) -> int | None:
                                               external_sku=code, sku_id=sid))
                     db.flush()
             return sid
+    key = title_key((item.get("purchased_item") or {}).get("title"))
+    if key:
+        return db.scalar(select(ExternalSkuMapping.sku_id).where(ExternalSkuMapping.platform == TITLE_PLATFORM,
+                                                                 ExternalSkuMapping.external_product_id == key))
     return None
 
 
@@ -174,7 +203,7 @@ def _source_type(source: str) -> str:
 
 
 def _book_revenue(db: Session, so: SalesOrder, line: SalesOrderLine, source: str) -> None:
-    _entry(db, f"whatnot:item:{line.external_line_id}:revenue", entry_date=biz_date(so.ordered_at),
+    _entry(db, f"whatnot:line:{line.id}:revenue", entry_date=biz_date(so.ordered_at),
            occurred_at=so.ordered_at, entry_type="revenue", amount_orig=line.line_amount,
            sales_order_id=so.id, order_line_id=line.id, livestream_id=so.livestream_id, sku_id=line.sku_id,
            source_type=_source_type(source), source_ref=f"whatnot:order:{so.external_order_id}")
@@ -205,7 +234,7 @@ def _ship(db: Session, so: SalesOrder, line: SalesOrderLine, shipped_at: datetim
             for r in reservations:
                 allocs = inventory.consume_fifo(
                     db, sku_id=r.sku_id, from_code="US_MAIN", to_code="CUSTOMER", movement_type="sale", qty=r.qty,
-                    key_prefix=f"whatnot:item:{line.external_line_id}:sale:{r.sku_id}", ref_type="sales_order_line",
+                    key_prefix=f"whatnot:line:{line.id}:sale:{r.sku_id}", ref_type="sales_order_line",
                     ref_id=line.id, note=f"Whatnot order {so.external_order_id}")
                 for a in allocs:
                     total = q4(a.unit_cost_base * a.qty)
@@ -214,7 +243,7 @@ def _ship(db: Session, so: SalesOrder, line: SalesOrderLine, shipped_at: datetim
                         db.add(CogsAllocation(order_line_id=line.id, component_sku_id=r.sku_id, lot_id=a.lot_id,
                                               movement_id=a.movement_id, qty=a.qty, unit_cost_base=a.unit_cost_base,
                                               total_cost_base=total))
-                    _entry(db, f"whatnot:item:{line.external_line_id}:cogs:{a.movement_id}",
+                    _entry(db, f"whatnot:line:{line.id}:cogs:{a.movement_id}",
                            entry_date=biz_date(shipped_at), occurred_at=shipped_at, entry_type="cogs",
                            amount_orig=-total, sales_order_id=so.id, order_line_id=line.id,
                            livestream_id=so.livestream_id, sku_id=r.sku_id, source_type=_source_type(source),
@@ -272,7 +301,7 @@ def apply_line(db: Session, so: SalesOrder, line: SalesOrderLine, source: str) -
             line.stock_state = "released"
         elif line.stock_state == "shipped":
             _set_exception(line, "cancelled_after_shipping", "訂單在出貨後被取消：請確認是否退貨，退款以財務報表為準")
-        _reverse(db, f"whatnot:item:{line.external_line_id}:revenue", when, _source_type(source))
+        _reverse(db, f"whatnot:line:{line.id}:revenue", when, _source_type(source))
         if line.exception_code in ("unmapped_sku", "oversold", "insufficient_stock"):
             _set_exception(line, None)
 
@@ -315,6 +344,14 @@ def process_order(db: Session, order: dict, items: list[dict], *, source: str) -
         line = db.scalar(select(SalesOrderLine).where(SalesOrderLine.order_id == so.id,
                                                       SalesOrderLine.external_line_id == item["id"]))
         unit = money(item.get("unit_price")) or Decimal(0)
+        if line is None and source != "csv":
+            # The same order may have been imported from a CSV export first: take over that line
+            # (same quantity and price) instead of creating a second one -> no double revenue.
+            line = db.scalar(select(SalesOrderLine).where(
+                SalesOrderLine.order_id == so.id, SalesOrderLine.external_line_id.like("csv-%"),
+                SalesOrderLine.qty == item["quantity"], SalesOrderLine.unit_price == unit).limit(1))
+            if line is not None:
+                line.external_line_id = item["id"]
         if line is None:
             line = SalesOrderLine(order_id=so.id, external_line_id=item["id"], qty=item["quantity"], unit_price=unit,
                                   line_amount=q4(unit * item["quantity"]))

@@ -1,6 +1,7 @@
 """/api/v1/integrations/whatnot (admin), /api/v1/webhooks/whatnot (public, signed),
 /api/v1/orders (order list / detail / exceptions / manual SKU mapping)."""
 import logging
+from decimal import Decimal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request, Response
 from pydantic import BaseModel, Field
@@ -158,6 +159,20 @@ def list_orders(status: str | None = None, exceptions_only: bool = False, livest
     return [dict(r) for r in rows]
 
 
+@router.get("/orders/unmapped-products")
+def unmapped_products(_: CurrentUser = Depends(orders_view), db: Session = Depends(get_db)):
+    """Lines without a SKU, grouped per product (auction titles without their #N), most sold first."""
+    groups: dict[str, dict] = {}
+    for line in db.scalars(select(SalesOrderLine).where(SalesOrderLine.sku_id.is_(None)).order_by(SalesOrderLine.id)):
+        key = processing.title_key(line.title_snapshot) or f"line:{line.id}"
+        g = groups.setdefault(key, {"title": processing.clean_title(line.title_snapshot) or "（沒有名稱）",
+                                    "example_line_id": line.id, "lines": 0, "units": 0, "sales": Decimal(0)})
+        g["lines"] += 1
+        g["units"] += line.qty
+        g["sales"] += line.line_amount
+    return sorted(groups.values(), key=lambda g: (-g["units"], g["title"]))
+
+
 @router.get("/orders/{order_id}")
 def get_order(order_id: int, _: CurrentUser = Depends(orders_view), db: Session = Depends(get_db)):
     so = db.get(SalesOrder, order_id)
@@ -211,13 +226,15 @@ def map_line(line_id: int, body: MapIn, current: CurrentUser = Depends(require_p
     db.flush()
     audit.record(db, action="order_line.mapped", entity_type="sales_order_line", entity_id=line.id, actor_id=current.id,
                  after={"sku_code": sku.sku_code, "whatnot_product_id": line.external_product_id}, ctx=ctx)
+    processing.save_title_rule(db, line.title_snapshot, sku.id, current.id)
     so = db.get(SalesOrder, line.order_id)
     processing.reprocess_order(db, so, "manual")
-    # other open lines of the same Whatnot product get the same mapping
-    if line.external_product_id:
-        for other in db.scalars(select(SalesOrderLine).where(SalesOrderLine.sku_id.is_(None),
-                                                             SalesOrderLine.external_product_id == line.external_product_id,
-                                                             SalesOrderLine.external_variant_id.is_not_distinct_from(line.external_variant_id))):
+    # every other unmapped line of the same Whatnot product, or with the same title (any #N), too
+    key = processing.title_key(line.title_snapshot)
+    for other in db.scalars(select(SalesOrderLine).where(SalesOrderLine.sku_id.is_(None))):
+        same_product = line.external_product_id and other.external_product_id == line.external_product_id \
+            and other.external_variant_id == line.external_variant_id
+        if same_product or (key and processing.title_key(other.title_snapshot) == key):
             other.sku_id, other.mapping_status = sku.id, "mapped"
             db.flush()
             processing.reprocess_order(db, db.get(SalesOrder, other.order_id), "manual")
