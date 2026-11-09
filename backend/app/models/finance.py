@@ -19,7 +19,7 @@ from app.models._util import check_in
 
 INCOME_TYPES = ("revenue", "shipping_income", "other_income")
 EXPENSE_TYPES = (
-    "cogs", "platform_fee", "payment_processing_fee", "shipping_cost", "refund",
+    "cogs", "sales_discount", "platform_fee", "payment_processing_fee", "shipping_cost", "refund",
     "operating_expense", "other_expense",
 )
 SIGNED_TYPES = ("cogs_adjustment",)  # late landed-cost corrections can go either way

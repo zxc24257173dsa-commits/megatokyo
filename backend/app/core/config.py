@@ -66,6 +66,15 @@ class Settings(BaseSettings):
     def google_enabled(self) -> bool:
         return bool(self.google_client_id and self.google_client_secret)
 
+    # ---- Whatnot Seller API (Phase 5) ----
+    # Token: a personal access token (wn_pat_tk_...) saved encrypted from the admin screen, or
+    # ERP_WHATNOT_API_TOKEN (Secret Manager in production). Webhook secret: wn_wh_...
+    whatnot_api_base: str = "https://api.whatnot.com/seller-api/rest/v2"
+    whatnot_api_token: SecretStr | None = None
+    whatnot_webhook_secret: SecretStr | None = None
+    whatnot_requests_per_second: float = 8.0  # Whatnot allows 10/s per seller per app
+    whatnot_sync_days: int = 3  # how far back each order/shipment sync looks
+
     # ---- Business flow ----
     # Owner (2026-11-09): goods are shipped from Japan straight to the US; no Japan warehouse.
     # When false the UI hides the Japan warehouse and JP_MAIN stock operations are refused.

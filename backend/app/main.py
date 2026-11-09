@@ -8,7 +8,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.v1 import auth, catalog, health, imports, inventory, users
+from app.api.v1 import auth, catalog, health, imports, inventory, users, whatnot
 from app.core.config import get_settings
 from app.core.errors import AppError, register_exception_handlers
 from app.core.logging import configure_logging, request_id_var
@@ -63,6 +63,7 @@ app.include_router(users.router, prefix="/api/v1")
 app.include_router(catalog.router, prefix="/api/v1")
 app.include_router(inventory.router, prefix="/api/v1")
 app.include_router(imports.router, prefix="/api/v1")
+app.include_router(whatnot.router, prefix="/api/v1")
 
 
 # ---------- single-page app (production) ----------

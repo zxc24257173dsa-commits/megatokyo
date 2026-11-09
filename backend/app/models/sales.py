@@ -31,7 +31,7 @@ class Livestream(IdMixin, TimestampMixin, Base):
 
     __table_args__ = (
         UniqueConstraint("platform", "external_id"),
-        check_in("status", ("scheduled", "live", "ended", "cancelled"), "status_valid"),
+        check_in("status", ("scheduled", "live", "stopped", "ended", "cancelled"), "status_valid"),
         check_in("source", DATA_SOURCES, "source_valid"),
         Index("ix_livestreams_started_at", "started_at"),
     )
@@ -71,6 +71,10 @@ class SalesOrder(IdMixin, TimestampMixin, Base):
     total: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
     source: Mapped[str] = mapped_column(String(20), nullable=False)
     external_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    transaction_type: Mapped[str | None] = mapped_column(String(20))  # buy_it_now / auction / giveaway / other
+    discount_total: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, server_default="0")
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (
         UniqueConstraint("platform", "external_order_id"),
@@ -95,9 +99,19 @@ class SalesOrderLine(IdMixin, TimestampMixin, Base):
     fulfillment_status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="unfulfilled")
     shipped_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     mapping_status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="unmapped")
+    external_product_id: Mapped[str | None] = mapped_column(String(128))
+    external_variant_id: Mapped[str | None] = mapped_column(String(128))
+    purchased_sku: Mapped[str | None] = mapped_column(String(128))  # SKU text on the listing at purchase time
+    external_shipment_id: Mapped[str | None] = mapped_column(String(128), index=True)
+    # none -> reserved -> shipped ; released (cancelled before shipping)
+    stock_state: Mapped[str] = mapped_column(String(20), nullable=False, server_default="none")
+    exception_code: Mapped[str | None] = mapped_column(String(40))
+    exception_detail: Mapped[str | None] = mapped_column(Text)
 
     __table_args__ = (
         UniqueConstraint("order_id", "external_line_id"),
+        check_in("stock_state", ("none", "reserved", "shipped", "released"), "stock_state_valid"),
+        Index("ix_sales_order_lines_exception", "exception_code", postgresql_where="exception_code IS NOT NULL"),
         CheckConstraint("qty > 0", name="qty_positive"),
         CheckConstraint("unit_price >= 0 AND discount >= 0 AND line_amount >= 0", name="amounts_nonneg"),
         check_in("fulfillment_status", ("unfulfilled", "shipped", "delivered"), "fulfillment_valid"),
@@ -158,3 +172,25 @@ class CogsAllocation(IdMixin, CreatedMixin, Base):
         CheckConstraint("qty > 0", name="qty_positive"),
         CheckConstraint("unit_cost_base >= 0 AND total_cost_base >= 0", name="cost_nonneg"),
     )
+
+
+SHIPPED_STATUSES = ("dropped_off", "in_transit", "delivered")
+
+
+class SalesShipment(IdMixin, TimestampMixin, Base):
+    """A platform shipment (one parcel to a buyer). When it reaches a shipped status the
+    order lines in it leave US stock (FIFO) and their cost of goods is booked."""
+
+    __tablename__ = "sales_shipments"
+
+    platform: Mapped[str] = mapped_column(String(30), nullable=False, server_default="whatnot")
+    external_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    status: Mapped[str] = mapped_column(String(40), nullable=False)
+    carrier: Mapped[str | None] = mapped_column(String(60))
+    tracking_code: Mapped[str | None] = mapped_column(String(128))
+    seller_paid_shipping_cost: Mapped[Decimal | None] = mapped_column(Numeric(18, 4))
+    currency: Mapped[str | None] = mapped_column(String(3))
+    shipped_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # first seen in a shipped status
+    external_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (UniqueConstraint("platform", "external_id"),)
