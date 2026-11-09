@@ -24,6 +24,7 @@ def _out(db: Session, u: User) -> UserOut:
         id=u.id, email=u.email, display_name=u.display_name, locale=u.locale, timezone=u.timezone,
         is_active=u.is_active, mfa_enabled=u.mfa_enabled, must_change_password=u.must_change_password,
         locked=bool(u.locked_until and u.locked_until > datetime.now(UTC)),
+        has_password=u.password_hash is not None, google_linked=u.google_sub is not None,
         last_login_at=u.last_login_at, created_at=u.created_at, roles=role_codes(db, u.id),
     )
 

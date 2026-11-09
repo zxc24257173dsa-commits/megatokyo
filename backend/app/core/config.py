@@ -52,6 +52,20 @@ class Settings(BaseSettings):
     mfa_required_roles: list[str] = ["admin"]
     mfa_issuer: str = "Megatokyo ERP"
 
+    # ---- Google sign-in ----
+    # Create an OAuth client (type "Web application") in Google Cloud Console and set
+    # ERP_GOOGLE_CLIENT_ID / ERP_GOOGLE_CLIENT_SECRET. Redirect URI to register:
+    #   {public_base_url}/api/v1/auth/google/callback
+    google_client_id: str | None = None
+    google_client_secret: SecretStr | None = None
+    google_hosted_domain: str | None = None  # optional: only accounts of this Google Workspace domain
+    public_base_url: str = "http://localhost:8000"
+    password_login_enabled: bool = True  # backup login; Google-only users have no password anyway
+
+    @property
+    def google_enabled(self) -> bool:
+        return bool(self.google_client_id and self.google_client_secret)
+
     # ---- File storage (Phase 3) ----
     # "local" stores under storage_dir (dev / single server). Phase 12 adds Google Cloud Storage.
     storage_backend: Literal["local"] = "local"

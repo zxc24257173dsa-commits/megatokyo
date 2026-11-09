@@ -24,7 +24,7 @@ def _read_password(from_stdin: bool) -> str:
 
 
 def create_admin(args) -> int:
-    password = _read_password(args.password_stdin)
+    password = None if args.google_only else _read_password(args.password_stdin)
     with SessionLocal() as db:
         try:
             user = users.create_user(
@@ -35,7 +35,9 @@ def create_admin(args) -> int:
         except AppError as e:
             print(f"Error: {e.code}: {e.message} {e.details or ''}", file=sys.stderr)
             return 1
-    print(f"Admin user created: id={user.id} email={user.email}. Two-factor setup is required at first login.")
+    how = ("Sign in with the Google account of this email." if args.google_only
+           else "Two-factor setup is required at first password login (not needed with Google sign-in).")
+    print(f"Admin user created: id={user.id} email={user.email}. {how}")
     return 0
 
 
@@ -48,6 +50,7 @@ def main(argv=None) -> int:
     p.add_argument("--locale", default="zh-TW")
     p.add_argument("--timezone", default="America/New_York")
     p.add_argument("--password-stdin", action="store_true")
+    p.add_argument("--google-only", action="store_true", help="No password; sign in with Google only")
     p.set_defaults(func=create_admin)
     args = parser.parse_args(argv)
     return args.func(args)

@@ -12,8 +12,8 @@
 | Phase | 狀態 |
 |---|---|
 | 1 系統架構與資料庫 | ✅ 完成（57 張資料表、資料庫層完整性規則、41 項自動測試） |
-| 2 登入、權限與多地同步 | ✅ 完成（Argon2id、JWT＋refresh 輪替、TOTP 雙因素、鎖定、RBAC、稽核；共 72 項測試） |
-| 3 商品與多倉庫庫存 | ✅ 完成（商品/規格/組合/照片、期初庫存、調整、盤點、FIFO 批次、網頁介面；88 項後端測試＋瀏覽器端對端測試） |
+| 2 登入、權限與多地同步 | ✅ 完成（**Google 帳號一鍵登入**、備用密碼＋雙因素、RBAC、稽核） |
+| 3 商品與多倉庫庫存 | ✅ 完成（商品/規格/組合/照片、期初庫存、調整、盤點、FIFO 批次、網頁介面；瀏覽器端對端測試） |
 | 4 CSV / Excel 成本匯入 | 待開始（需要成本試算表） |
 
 ## 本機開發
@@ -39,7 +39,7 @@ python3 -m venv .venv && . .venv/bin/activate
 pip install -e ".[dev]"
 cp .env.example .env          # 依需要修改連線字串
 alembic upgrade head          # 建立/升級資料庫
-python -m app.cli create-admin --email you@example.com --name "Owner"   # 第一位管理員
+python -m app.cli create-admin --email 你的Gmail --name "Owner" --google-only   # 第一位管理員（Google 登入）
 uvicorn app.main:app --reload
 ```
 

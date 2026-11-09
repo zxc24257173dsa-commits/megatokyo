@@ -8,6 +8,8 @@ export interface Me {
   roles: string[];
   permissions: string[];
   restrictions: string[];
+  auth_method: string;
+  has_password: boolean;
 }
 
 export interface SkuRow {
@@ -110,6 +112,8 @@ export interface UserRow {
   mfa_enabled: boolean;
   must_change_password: boolean;
   locked: boolean;
+  has_password: boolean;
+  google_linked: boolean;
   last_login_at: string | null;
   roles: string[];
 }

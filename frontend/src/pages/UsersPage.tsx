@@ -43,7 +43,12 @@ export function UsersPage() {
       </div>
       <ErrorBox error={error} />
       {notice && <div className="alert ok">{notice}</div>}
-      <NewUserForm onCreated={(u) => (setNotice(`已建立 ${u.email}，請把臨時密碼交給對方；首次登入會要求更改。`), void refresh())} />
+      <NewUserForm
+        onCreated={(u) => (
+          setNotice(u.has_password ? `已建立 ${u.email}，請把臨時密碼交給對方；首次登入會要求更改。` : `已建立 ${u.email}，請對方用這個 Email 的 Google 帳號登入。`),
+          void refresh()
+        )}
+      />
       <div className="card">
         {users.isLoading ? <Loading /> : (
           <table className="data responsive">
@@ -67,7 +72,8 @@ export function UsersPage() {
                       {!u.is_active && <span className="badge">已停用</span>}
                       {u.locked && <span className="badge danger">鎖定中</span>}
                       {u.must_change_password && <span className="badge warn">待改密碼</span>}
-                      {u.mfa_enabled ? <span className="badge ok">雙因素</span> : <span className="badge">無雙因素</span>}
+                      {u.google_linked ? <span className="badge ok">Google 已連結</span> : <span className="badge info">待 Google 首次登入</span>}
+                      {u.has_password && (u.mfa_enabled ? <span className="badge ok">密碼＋雙因素</span> : <span className="badge">有密碼</span>)}
                     </div>
                   </td>
                   <td data-label="最近登入" className="small">{fmtDateTime(u.last_login_at, me?.timezone)}</td>
@@ -100,7 +106,10 @@ function NewUserForm({ onCreated }: { onCreated: (u: UserRow) => void }) {
   const [open, setOpen] = useState(false);
   const [f, setF] = useState({ email: "", display_name: "", temporary_password: "", role: "jp_inventory", timezone: "Asia/Tokyo", locale: "zh-TW" });
   const m = useMutation({
-    mutationFn: () => api<UserRow>("/users", { body: { email: f.email, display_name: f.display_name, temporary_password: f.temporary_password, roles: [f.role], timezone: f.timezone, locale: f.locale } }),
+    mutationFn: () =>
+      api<UserRow>("/users", {
+        body: { email: f.email, display_name: f.display_name, temporary_password: f.temporary_password || null, roles: [f.role], timezone: f.timezone, locale: f.locale },
+      }),
     onSuccess: (u) => {
       setOpen(false);
       setF({ ...f, email: "", display_name: "", temporary_password: "" });
@@ -114,9 +123,9 @@ function NewUserForm({ onCreated }: { onCreated: (u: UserRow) => void }) {
       <h2>新增使用者</h2>
       <ErrorBox error={m.error} />
       <div className="inline-inputs">
-        <Field label="Email"><input type="email" required value={f.email} onChange={set("email")} /></Field>
+        <Field label="Google 帳號 Email"><input type="email" required value={f.email} onChange={set("email")} /></Field>
         <Field label="顯示名稱"><input required value={f.display_name} onChange={set("display_name")} /></Field>
-        <Field label="臨時密碼" hint="至少 12 字元；對方首次登入須更改"><input required minLength={12} value={f.temporary_password} onChange={set("temporary_password")} /></Field>
+        <Field label="臨時密碼（選填）" hint="留空 = 只用 Google 登入（建議）"><input minLength={12} value={f.temporary_password} onChange={set("temporary_password")} /></Field>
         <Field label="角色"><select value={f.role} onChange={set("role")}>{ROLES.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}</select></Field>
         <Field label="時區"><select value={f.timezone} onChange={set("timezone")}>{TIMEZONES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></Field>
         <Field label="語言"><select value={f.locale} onChange={set("locale")}><option value="zh-TW">繁體中文</option><option value="ja">日本語</option><option value="en">English</option></select></Field>
@@ -147,19 +156,25 @@ export function AccountPage() {
             <dt>Email</dt><dd>{me.email}</dd>
             <dt>角色</dt><dd>{me.roles.map((r) => ROLE_LABEL[r] ?? r).join("、")}</dd>
             <dt>時區</dt><dd>{me.timezone}</dd>
-            <dt>雙因素</dt><dd>{me.mfa_enabled ? <span className="badge ok">已啟用</span> : <span className="badge">未啟用</span>}</dd>
+            <dt>這次登入</dt><dd>{me.auth_method === "google" ? "Google 帳號" : me.auth_method === "password+totp" ? "密碼＋驗證碼" : "密碼"}</dd>
+            {me.has_password && <><dt>雙因素</dt><dd>{me.mfa_enabled ? <span className="badge ok">已啟用</span> : <span className="badge">未啟用</span>}</dd></>}
           </dl>
-          {!me.mfa_enabled && (
+          {me.auth_method === "google" && (
+            <p className="small muted">建議在 Google 帳號開啟「兩步驟驗證」，這樣即使 Google 密碼外洩，別人也無法登入 ERP。</p>
+          )}
+          {me.has_password && !me.mfa_enabled && (
             <div style={{ marginTop: 16 }}>
               <h2>啟用雙因素驗證（建議）</h2>
               {mfaDone ? <div className="alert ok">已啟用</div> : <MfaSetupForm onDone={() => setMfaDone(true)} />}
             </div>
           )}
         </div>
-        <div className="card">
-          <h2>變更密碼</h2>
-          <PasswordChangeForm />
-        </div>
+        {me.has_password && (
+          <div className="card">
+            <h2>變更密碼</h2>
+            <PasswordChangeForm />
+          </div>
+        )}
       </div>
     </>
   );

@@ -15,6 +15,8 @@ class UserOut(BaseModel):
     mfa_enabled: bool
     must_change_password: bool
     locked: bool
+    has_password: bool
+    google_linked: bool
     last_login_at: datetime | None
     created_at: datetime
     roles: list[str]
@@ -23,7 +25,8 @@ class UserOut(BaseModel):
 class UserCreate(BaseModel):
     email: Email
     display_name: str = Field(min_length=1, max_length=120)
-    temporary_password: str = Field(min_length=1, max_length=256)
+    # Leave empty for Google-only accounts.
+    temporary_password: str | None = Field(default=None, min_length=1, max_length=256)
     roles: list[str] = Field(min_length=1)
     locale: str = "zh-TW"
     timezone: str = "America/New_York"

@@ -63,9 +63,11 @@ def _encode(claims: dict, ttl: timedelta) -> str:
     return jwt.encode(payload, get_settings().jwt_secret.get_secret_value(), algorithm=ALGORITHM)
 
 
-def create_access_token(user_id: int, token_version: int) -> tuple[str, int]:
+def create_access_token(user_id: int, token_version: int, auth_method: str = "password") -> tuple[str, int]:
+    """`amr` records how this session signed in (password / password+totp / google)."""
     ttl = timedelta(minutes=get_settings().access_token_ttl_minutes)
-    return _encode({"sub": str(user_id), "typ": "access", "tv": token_version}, ttl), int(ttl.total_seconds())
+    claims = {"sub": str(user_id), "typ": "access", "tv": token_version, "amr": auth_method}
+    return _encode(claims, ttl), int(ttl.total_seconds())
 
 
 def create_mfa_challenge_token(user_id: int, token_version: int) -> str:

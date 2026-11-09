@@ -15,7 +15,10 @@ class User(IdMixin, TimestampMixin, Base):
     __tablename__ = "users"
 
     email: Mapped[str] = mapped_column(String(320), nullable=False)
-    password_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    # NULL = Google sign-in only (no password login possible).
+    password_hash: Mapped[str | None] = mapped_column(Text)
+    # Google account "sub" (stable id), bound at first Google login so a recycled email can't take over.
+    google_sub: Mapped[str | None] = mapped_column(String(255), unique=True)
     display_name: Mapped[str] = mapped_column(String(120), nullable=False)
     locale: Mapped[str] = mapped_column(String(10), nullable=False, server_default="zh-TW")
     timezone: Mapped[str] = mapped_column(String(64), nullable=False, server_default="America/New_York")
@@ -79,10 +82,15 @@ class RefreshToken(IdMixin, CreatedMixin, Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     family_id: Mapped[str] = mapped_column(String(32), nullable=False, index=True)  # one per login session
+    auth_method: Mapped[str] = mapped_column(String(20), nullable=False, server_default="password")
     revoked_reason: Mapped[str | None] = mapped_column(String(30))
     replaced_by_id: Mapped[int | None] = mapped_column(ForeignKey("refresh_tokens.id"))
     ip: Mapped[str | None] = mapped_column(String(64))
     user_agent: Mapped[str | None] = mapped_column(Text)
+
+    __table_args__ = (
+        CheckConstraint("auth_method IN ('password', 'password+totp', 'google')", name="auth_method_valid"),
+    )
 
 
 class AuditLog(IdMixin, CreatedMixin, Base):

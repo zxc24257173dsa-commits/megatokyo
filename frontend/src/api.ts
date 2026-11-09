@@ -111,7 +111,23 @@ const MESSAGES: Record<string, string> = {
   file_too_large: "圖片需小於 5 MB",
   category_exists: "分類已存在",
   validation_error: "輸入資料格式不正確",
+  password_login_disabled: "已停用密碼登入，請使用 Google 登入",
+  no_password: "這個帳號使用 Google 登入，沒有密碼",
+  account_not_registered: "這個 Google 帳號還沒有被加入系統，請聯絡管理員",
+  google_account_mismatch: "這個 Email 已綁定另一個 Google 帳號",
+  google_account_in_use: "這個 Google 帳號已綁定其他使用者",
+  google_email_unverified: "這個 Google 帳號的 Email 尚未驗證",
+  google_domain_not_allowed: "只允許公司網域的 Google 帳號",
+  google_state_invalid: "登入逾時，請再試一次",
+  google_token_invalid: "Google 登入驗證失敗，請再試一次",
+  google_exchange_failed: "Google 登入失敗，請再試一次",
+  google_unreachable: "暫時無法連線到 Google，請稍後再試",
+  google_cancelled: "已取消 Google 登入",
 };
+
+export function messageFor(code: string): string {
+  return MESSAGES[code] ?? "登入失敗，請再試一次";
+}
 
 export function errorText(e: unknown): string {
   if (e instanceof ApiError) {

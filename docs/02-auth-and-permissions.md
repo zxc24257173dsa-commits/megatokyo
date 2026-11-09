@@ -61,3 +61,51 @@ python -m app.cli create-admin --email you@example.com --name "Owner"
 ```
 
 密碼以互動方式輸入，不會留在指令紀錄中。第一次登入後系統會要求設定雙因素驗證。
+
+## Google 帳號登入（2026-11-09 新增，主要登入方式）
+
+業主決定以 **Google 帳號一鍵登入** 作為主要登入方式：不用記密碼，也不用輸入驗證碼。
+
+### 運作方式
+
+1. 管理員在「使用者」頁面加入員工的 **Google 帳號 Email**（臨時密碼留空 = 只用 Google 登入）。
+2. 員工打開 ERP → 按「使用 Google 帳號登入」→ 在 Google 選帳號 → 自動回到 ERP。
+3. 沒有被加入的 Google 帳號一律拒絕；停用的帳號立即無法登入。
+4. 第一次登入時系統會綁定該 Google 帳號的唯一編號；之後即使有人拿到同一個 Email 地址的新 Google 帳號也無法冒用。
+
+### 安全設計
+
+| 項目 | 做法 |
+|---|---|
+| 協定 | OpenID Connect 授權碼流程（Google 官方建議的伺服器端方式） |
+| 防偽造登入 | state（綁定 10 分鐘有效的簽章 cookie）、nonce、PKCE (S256) |
+| 驗證 Google 回傳 | 以 Google 公開金鑰驗簽 ID Token，檢查發行者、受眾（我們的 Client ID）、到期時間、nonce、Email 已驗證 |
+| 公司網域限制（選用） | 設定 `ERP_GOOGLE_HOSTED_DOMAIN` 後，只接受該 Google Workspace 網域的帳號 |
+| 不會跳到其他網站 | 登入後只導回本站路徑 |
+| Client Secret | 只存在伺服器（Secret Manager），不會送到瀏覽器 |
+| 雙因素 | Google 登入不再要求 ERP 的驗證碼；**建議每位員工在 Google 帳號開啟「兩步驟驗證」** |
+| 備用登入 | Email＋密碼仍可用（例如 Google 故障時）；管理員以密碼登入時仍需驗證碼。設定 `ERP_PASSWORD_LOGIN_ENABLED=false` 可完全關閉密碼登入 |
+
+### 設定步驟（部署時需要業主操作一次）
+
+1. 打開 [Google Cloud Console](https://console.cloud.google.com/) → 選擇或建立專案。
+2. 「API 和服務」→「OAuth 同意畫面」：
+   - 有 Google Workspace（公司網域信箱）：選「內部」。
+   - 一般 Gmail：選「外部」，並在「測試使用者」加入員工的 Gmail，或發布應用程式。
+3. 「API 和服務」→「憑證」→「建立憑證」→「OAuth 用戶端 ID」→ 類型「網頁應用程式」。
+4. 「已授權的重新導向 URI」加入：
+   - 正式環境：`https://<你的網域>/api/v1/auth/google/callback`
+   - 本機測試：`http://localhost:8000/api/v1/auth/google/callback`
+5. 把產生的 **用戶端 ID** 與 **用戶端密鑰** 設為環境變數 `ERP_GOOGLE_CLIENT_ID`、`ERP_GOOGLE_CLIENT_SECRET`（正式環境放在 Secret Manager；**不要貼在聊天或程式碼中**），並設定 `ERP_PUBLIC_BASE_URL=https://<你的網域>`。
+
+### 第一位管理員
+
+```bash
+python -m app.cli create-admin --email 你的Gmail --name "Owner" --google-only
+```
+
+### 資料庫變更（Migration 0005）
+
+- `users.password_hash` 可為空（只用 Google 登入的帳號）
+- `users.google_sub`：綁定的 Google 帳號編號（唯一）
+- `refresh_tokens.auth_method`：這次登入的方式（password / password+totp / google）

@@ -4,16 +4,21 @@ Access token: short-lived JWT returned in the body (frontend keeps it in memory 
 Refresh token: opaque, httpOnly + Secure + SameSite=Strict cookie scoped to /api/v1/auth,
 so page scripts can never read it.
 """
+from urllib.parse import quote
+
 from fastapi import APIRouter, Depends, Request, Response
+from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.api.deps import CurrentUser, get_current_user, get_request_context
 from app.core.config import get_settings
+from app.core.errors import AppError
 from app.db.session import get_db
+from app.services import google_oauth
 from app.services import auth as svc
 from app.services.audit import RequestContext
 from app.schemas.auth import (
-    LoginRequest, LoginResponse, MeResponse, MfaCode, MfaDisableRequest, MfaSetupResponse, MfaVerifyRequest,
+    AuthConfig, LoginRequest, LoginResponse, MeResponse, MfaCode, MfaDisableRequest, MfaSetupResponse, MfaVerifyRequest,
     PasswordChangeRequest, TokenResponse,
 )
 
@@ -40,6 +45,48 @@ def _token(session: svc.IssuedSession, response: Response) -> TokenResponse:
     response.headers["Cache-Control"] = "no-store"
     return TokenResponse(access_token=session.access_token, expires_in=session.expires_in,
                          restrictions=session.restrictions)
+
+
+@router.get("/config", response_model=AuthConfig)
+def auth_config():
+    """Which sign-in options the login page should show."""
+    s = get_settings()
+    return AuthConfig(google_enabled=s.google_enabled, password_enabled=s.password_login_enabled)
+
+
+@router.get("/google/start", include_in_schema=False)
+def google_start(next: str | None = None):
+    url, cookie = google_oauth.begin(next)
+    resp = RedirectResponse(url, status_code=302)
+    # SameSite=Lax: the browser must send it back on Google's top-level redirect to our callback.
+    resp.set_cookie(google_oauth.STATE_COOKIE, cookie, max_age=int(google_oauth.STATE_TTL.total_seconds()),
+                    path=google_oauth.STATE_COOKIE_PATH, httponly=True, secure=get_settings().cookie_secure,
+                    samesite="lax")
+    return resp
+
+
+@router.get("/google/callback", include_in_schema=False)
+def google_callback(request: Request, code: str | None = None, state: str | None = None, error: str | None = None,
+                    db: Session = Depends(get_db), ctx: RequestContext = Depends(get_request_context)):
+    """Never shows a raw error page: problems go back to the login screen as ?login_error=<code>."""
+    next_path = "/"
+    try:
+        claims = google_oauth.read_state_cookie(request.cookies.get(google_oauth.STATE_COOKIE), state)
+        next_path = claims["next"]
+        if error or not code:
+            raise AppError("google_cancelled", "Google sign-in was cancelled", 400)
+        id_claims = google_oauth.verify_id_token(google_oauth.exchange_code(code, claims["verifier"]), claims["nonce"])
+        session = svc.login_with_google(db, id_claims, ctx)
+        db.commit()
+    except AppError as e:
+        db.rollback()
+        resp = RedirectResponse(f"/?login_error={quote(e.code)}", status_code=302)
+        resp.delete_cookie(google_oauth.STATE_COOKIE, path=google_oauth.STATE_COOKIE_PATH)
+        return resp
+    resp = RedirectResponse(next_path, status_code=302)
+    _set_refresh_cookie(resp, session.refresh_token)
+    resp.delete_cookie(google_oauth.STATE_COOKIE, path=google_oauth.STATE_COOKIE_PATH)
+    return resp
 
 
 @router.post("/login", response_model=LoginResponse)
@@ -85,13 +132,15 @@ def me(current: CurrentUser = Depends(get_current_user)):
         id=u.id, email=u.email, display_name=u.display_name, locale=u.locale, timezone=u.timezone,
         mfa_enabled=u.mfa_enabled, last_login_at=u.last_login_at, roles=current.roles,
         permissions=sorted(current.permissions), restrictions=current.restrictions,
+        auth_method=current.auth_method, has_password=u.password_hash is not None,
     )
 
 
 @router.post("/password", response_model=TokenResponse)
 def change_password(body: PasswordChangeRequest, response: Response, current: CurrentUser = Depends(get_current_user),
                     db: Session = Depends(get_db), ctx: RequestContext = Depends(get_request_context)):
-    session = svc.change_password(db, current.user, body.current_password, body.new_password, ctx)
+    session = svc.change_password(db, current.user, body.current_password, body.new_password, ctx,
+                                  auth_method=current.auth_method)
     db.commit()
     return _token(session, response)
 

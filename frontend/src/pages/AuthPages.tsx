@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import QRCode from "qrcode";
-import { api, type TokenResponse } from "../api";
+import { api, messageFor, type TokenResponse } from "../api";
 import { useAuth } from "../auth";
 import { ErrorBox, Field } from "../components/ui";
 
@@ -18,14 +18,48 @@ function AuthCard({ title, children }: { title: string; children: React.ReactNod
   );
 }
 
+function GoogleMark() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
+      <path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.6 5.4 2.7 13.3l7.9 6.1C12.5 13.6 17.8 9.5 24 9.5z" />
+      <path fill="#4285F4" d="M46.1 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.4c-.5 2.9-2.2 5.3-4.6 6.9l7.4 5.7c4.3-4 6.9-9.9 6.9-17.1z" />
+      <path fill="#FBBC05" d="M10.5 28.6c-.5-1.4-.8-3-.8-4.6s.3-3.2.8-4.6l-7.9-6.1C1 16.6 0 20.2 0 24s1 7.4 2.7 10.7l7.8-6.1z" />
+      <path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.4-5.7c-2.1 1.4-4.8 2.3-8.5 2.3-6.2 0-11.5-4.1-13.4-9.8l-7.9 6.1C6.6 42.6 14.6 48 24 48z" />
+    </svg>
+  );
+}
+
 export function LoginPage() {
   const { acceptToken } = useAuth();
+  const [config, setConfig] = useState<{ google_enabled: boolean; password_enabled: boolean } | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [mfaToken, setMfaToken] = useState<string | null>(null);
   const [code, setCode] = useState("");
   const [error, setError] = useState<unknown>(null);
+  const [googleError, setGoogleError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    api<{ google_enabled: boolean; password_enabled: boolean }>("/auth/config")
+      .then(setConfig)
+      .catch(() => setConfig({ google_enabled: false, password_enabled: true }));
+    // Errors from the Google redirect come back as ?login_error=<code>; show once, then clean the URL.
+    const params = new URLSearchParams(window.location.search);
+    const err = params.get("login_error");
+    if (err) {
+      setGoogleError(messageFor(err));
+      params.delete("login_error");
+      const qs = params.toString();
+      window.history.replaceState(null, "", window.location.pathname + (qs ? `?${qs}` : ""));
+    }
+  }, []);
+
+  function signInWithGoogle() {
+    const next = window.location.pathname + window.location.search;
+    window.location.href = `/api/v1/auth/google/start?next=${encodeURIComponent(next)}`;
+  }
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -49,42 +83,64 @@ export function LoginPage() {
     }
   }
 
+  if (!config) return null;
+  const google = config.google_enabled;
+  const passwordVisible = config.password_enabled && (!google || showPassword || mfaToken);
+
   return (
     <AuthCard title={mfaToken ? "輸入驗證碼" : "登入"}>
-      <form onSubmit={submit}>
-        <ErrorBox error={error} />
-        {!mfaToken ? (
-          <>
-            <Field label="Email">
-              <input type="email" autoComplete="username" required value={email} onChange={(e) => setEmail(e.target.value)} autoFocus />
-            </Field>
-            <Field label="密碼">
-              <input type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
-            </Field>
-          </>
-        ) : (
-          <Field label="驗證器 App 上的 6 位數字">
-            <input
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              pattern="[0-9]{6}"
-              maxLength={6}
-              required
-              value={code}
-              onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
-              autoFocus
-            />
-          </Field>
-        )}
-        <button className="btn primary" style={{ width: "100%", justifyContent: "center" }} disabled={busy}>
-          {busy ? "處理中…" : mfaToken ? "驗證" : "登入"}
-        </button>
-        {mfaToken && (
-          <button type="button" className="btn" style={{ width: "100%", justifyContent: "center", marginTop: 8 }} onClick={() => setMfaToken(null)}>
-            返回
+      {googleError && <div className="alert error" role="alert">{googleError}</div>}
+      {google && !mfaToken && (
+        <>
+          <button type="button" className="btn primary" style={{ width: "100%", justifyContent: "center", minHeight: 46 }} onClick={signInWithGoogle}>
+            <span style={{ background: "#fff", borderRadius: 4, padding: 3, display: "inline-flex" }}><GoogleMark /></span>
+            使用 Google 帳號登入
           </button>
-        )}
-      </form>
+          <p className="small muted" style={{ textAlign: "center", margin: "10px 0 0" }}>只有管理員加入的 Google 帳號可以登入</p>
+        </>
+      )}
+      {google && config.password_enabled && !passwordVisible && (
+        <button type="button" className="btn" style={{ width: "100%", justifyContent: "center", marginTop: 16, border: 0, color: "var(--muted)" }} onClick={() => setShowPassword(true)}>
+          使用 Email 和密碼登入（備用）
+        </button>
+      )}
+      {!google && !config.password_enabled && <div className="alert error">目前沒有可用的登入方式，請聯絡管理員。</div>}
+      {passwordVisible && (
+        <form onSubmit={submit} style={google && !mfaToken ? { marginTop: 18, paddingTop: 18, borderTop: "1px solid var(--border)" } : undefined}>
+          <ErrorBox error={error} />
+          {!mfaToken ? (
+            <>
+              <Field label="Email">
+                <input type="email" autoComplete="username" required value={email} onChange={(e) => setEmail(e.target.value)} autoFocus={!google} />
+              </Field>
+              <Field label="密碼">
+                <input type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+              </Field>
+            </>
+          ) : (
+            <Field label="驗證器 App 上的 6 位數字">
+              <input
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                pattern="[0-9]{6}"
+                maxLength={6}
+                required
+                value={code}
+                onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+                autoFocus
+              />
+            </Field>
+          )}
+          <button className={google ? "btn" : "btn primary"} style={{ width: "100%", justifyContent: "center" }} disabled={busy}>
+            {busy ? "處理中…" : mfaToken ? "驗證" : "登入"}
+          </button>
+          {mfaToken && (
+            <button type="button" className="btn" style={{ width: "100%", justifyContent: "center", marginTop: 8 }} onClick={() => setMfaToken(null)}>
+              返回
+            </button>
+          )}
+        </form>
+      )}
     </AuthCard>
   );
 }

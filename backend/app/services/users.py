@@ -21,6 +21,7 @@ def _snapshot(db: Session, user: User) -> dict:
     return {
         "email": user.email, "display_name": user.display_name, "locale": user.locale, "timezone": user.timezone,
         "is_active": user.is_active, "mfa_enabled": user.mfa_enabled, "roles": role_codes(db, user.id),
+        "has_password": user.password_hash is not None, "google_linked": user.google_sub is not None,
     }
 
 
@@ -57,18 +58,21 @@ def _ensure_another_active_admin(db: Session, user_id: int) -> None:
 
 
 def create_user(
-    db: Session, *, actor_id: int | None, email: str, display_name: str, password: str, roles: list[str],
+    db: Session, *, actor_id: int | None, email: str, display_name: str, password: str | None, roles: list[str],
     locale: str = "zh-TW", timezone: str = "America/New_York", must_change_password: bool = True,
     ctx: RequestContext | None = None,
 ) -> User:
     email = normalize_email(email)
     _validate_profile(locale, timezone)
-    validate_new_password(password, email)
+    if password is not None:
+        validate_new_password(password, email)
     role_ids = _role_ids(db, roles)
     if db.scalar(select(User.id).where(func.lower(User.email) == email)) is not None:
         raise AppError("email_taken", "A user with this email already exists", 409)
-    user = User(email=email, display_name=display_name.strip(), password_hash=security.hash_password(password),
-                locale=locale, timezone=timezone, must_change_password=must_change_password)
+    # password=None -> Google sign-in only.
+    user = User(email=email, display_name=display_name.strip(),
+                password_hash=security.hash_password(password) if password is not None else None,
+                locale=locale, timezone=timezone, must_change_password=must_change_password and password is not None)
     db.add(user)
     try:
         with db.begin_nested():

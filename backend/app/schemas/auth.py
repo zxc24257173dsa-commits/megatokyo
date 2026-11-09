@@ -62,3 +62,10 @@ class MeResponse(BaseModel):
     roles: list[str]
     permissions: list[str]
     restrictions: list[str]
+    auth_method: str
+    has_password: bool
+
+
+class AuthConfig(BaseModel):
+    google_enabled: bool
+    password_enabled: bool

@@ -33,6 +33,7 @@ class CurrentUser:
     roles: list[str]
     permissions: set[str]
     restrictions: list[str]
+    auth_method: str = "password"
 
     @property
     def id(self) -> int:
@@ -57,7 +58,9 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> Current
     if user is None or not user.is_active or user.token_version != claims["tv"]:
         raise _unauthorized()
     roles = auth_service.role_codes(db, user.id)
-    return CurrentUser(user, roles, auth_service.permission_codes(db, user.id), auth_service.restrictions(user, roles))
+    method = claims.get("amr", "password")
+    return CurrentUser(user, roles, auth_service.permission_codes(db, user.id),
+                       auth_service.restrictions(user, roles, method), method)
 
 
 def get_active_user(current: CurrentUser = Depends(get_current_user)) -> CurrentUser:

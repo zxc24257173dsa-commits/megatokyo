@@ -52,8 +52,12 @@ def permission_codes(db: Session, user_id: int) -> set[str]:
     return set(db.scalars(q))
 
 
-def restrictions(user: User, roles: list[str]) -> list[str]:
+def restrictions(user: User, roles: list[str], auth_method: str = "password") -> list[str]:
+    """Google sessions are already protected by Google (use 2-Step Verification on the Google
+    account), so they skip our TOTP and temporary-password rules."""
     out = []
+    if auth_method == "google":
+        return out
     if user.must_change_password:
         out.append(PASSWORD_CHANGE_REQUIRED)
     if not user.mfa_enabled and set(roles) & set(get_settings().mfa_required_roles):
@@ -71,17 +75,18 @@ class IssuedSession:
     restrictions: list[str] = field(default_factory=list)
 
 
-def _issue_session(db: Session, user: User, ctx: RequestContext, family_id: str | None = None) -> tuple[IssuedSession, RefreshToken]:
-    access, ttl = security.create_access_token(user.id, user.token_version)
+def _issue_session(db: Session, user: User, ctx: RequestContext, family_id: str | None = None,
+                   auth_method: str = "password") -> tuple[IssuedSession, RefreshToken]:
+    access, ttl = security.create_access_token(user.id, user.token_version, auth_method)
     raw, hashed = security.new_refresh_token()
     rt = RefreshToken(
-        user_id=user.id, token_hash=hashed, family_id=family_id or uuid.uuid4().hex,
+        user_id=user.id, token_hash=hashed, family_id=family_id or uuid.uuid4().hex, auth_method=auth_method,
         expires_at=_now() + timedelta(days=get_settings().refresh_token_ttl_days),
         ip=ctx.ip, user_agent=(ctx.user_agent or "")[:500] or None,
     )
     db.add(rt)
     db.flush()
-    return IssuedSession(access, ttl, raw, restrictions(user, role_codes(db, user.id))), rt
+    return IssuedSession(access, ttl, raw, restrictions(user, role_codes(db, user.id), auth_method)), rt
 
 
 def revoke_all_sessions(db: Session, user: User, reason: str) -> None:
@@ -115,7 +120,7 @@ def _complete_login(db: Session, user: User, ctx: RequestContext, method: str) -
     user.failed_login_count = 0
     user.locked_until = None
     user.last_login_at = _now()
-    session, _ = _issue_session(db, user, ctx)
+    session, _ = _issue_session(db, user, ctx, auth_method=method)
     audit.record(db, action="auth.login", entity_type="user", entity_id=user.id, actor_id=user.id,
                  after={"method": method, "restrictions": session.restrictions}, ctx=ctx)
     return session
@@ -128,6 +133,8 @@ class LoginResult:
 
 
 def login(db: Session, email: str, password: str, ctx: RequestContext) -> LoginResult:
+    if not get_settings().password_login_enabled:
+        raise AppError("password_login_disabled", "Password sign-in is disabled; use Google sign-in", 403)
     email = normalize_email(email)
     user = db.scalar(select(User).where(func.lower(User.email) == email).with_for_update().execution_options(populate_existing=True))
     if user is None:
@@ -154,6 +161,7 @@ def login(db: Session, email: str, password: str, ctx: RequestContext) -> LoginR
         db.commit()
         return LoginResult(mfa_token=security.create_mfa_challenge_token(user.id, user.token_version))
     return LoginResult(session=_complete_login(db, user, ctx, "password"))
+
 
 
 def verify_mfa_login(db: Session, mfa_token: str, code: str, ctx: RequestContext) -> IssuedSession:
@@ -200,7 +208,7 @@ def refresh(db: Session, raw_refresh: str | None, ctx: RequestContext) -> Issued
         raise invalid
     if rt.expires_at <= _now() or user is None or not user.is_active:
         raise invalid
-    session, new_rt = _issue_session(db, user, ctx, family_id=rt.family_id)
+    session, new_rt = _issue_session(db, user, ctx, family_id=rt.family_id, auth_method=rt.auth_method)
     rt.revoked_at = _now()
     rt.revoked_reason = "rotated"
     rt.replaced_by_id = new_rt.id
@@ -229,7 +237,10 @@ def validate_new_password(password: str, email: str) -> None:
         raise AppError("weak_password", "Password does not meet the policy", 422, {"rules": errors})
 
 
-def change_password(db: Session, user: User, current: str, new: str, ctx: RequestContext) -> IssuedSession:
+def change_password(db: Session, user: User, current: str, new: str, ctx: RequestContext,
+                    auth_method: str = "password") -> IssuedSession:
+    if user.password_hash is None:
+        raise AppError("no_password", "This account signs in with Google and has no password", 409)
     if not security.verify_password(current, user.password_hash):
         _register_failure(db, user, ctx, "bad_password_on_change")
         raise AppError("invalid_credentials", "Current password is incorrect", 401)
@@ -241,7 +252,7 @@ def change_password(db: Session, user: User, current: str, new: str, ctx: Reques
     user.password_changed_at = _now()
     revoke_all_sessions(db, user, "password_changed")
     audit.record(db, action="auth.password_changed", entity_type="user", entity_id=user.id, actor_id=user.id, ctx=ctx)
-    session, _ = _issue_session(db, user, ctx)  # keep this device signed in
+    session, _ = _issue_session(db, user, ctx, auth_method=auth_method)  # keep this device signed in
     return session
 
 
@@ -268,6 +279,34 @@ def mfa_enable(db: Session, user: User, code: str, ctx: RequestContext) -> None:
     user.mfa_enabled = True
     user.mfa_last_used_step = step
     audit.record(db, action="auth.mfa_enabled", entity_type="user", entity_id=user.id, actor_id=user.id, ctx=ctx)
+
+
+def login_with_google(db: Session, claims: dict, ctx: RequestContext) -> IssuedSession:
+    """Only users an admin has already added (by email) can sign in; the Google account id
+    is bound on first use so a later owner of the same address cannot take over."""
+    email = normalize_email(claims["email"])
+    user = db.scalar(select(User).where(func.lower(User.email) == email).with_for_update()
+                     .execution_options(populate_existing=True))
+    if user is None or not user.is_active:
+        audit.record(db, action="auth.login_failed", entity_type="user", entity_id=user.id if user else None,
+                     actor_id=user.id if user else None,
+                     after={"email": email, "method": "google",
+                            "reason": "inactive" if user else "not_registered"}, ctx=ctx)
+        db.commit()
+        raise AppError("account_not_registered", "This Google account has not been added to the ERP", 403)
+    if user.google_sub is None:
+        taken = db.scalar(select(User.id).where(User.google_sub == claims["sub"]))
+        if taken is not None:
+            raise AppError("google_account_in_use", "This Google account is linked to another user", 409)
+        user.google_sub = claims["sub"]
+        audit.record(db, action="auth.google_linked", entity_type="user", entity_id=user.id, actor_id=user.id,
+                     after={"email": email}, ctx=ctx)
+    elif user.google_sub != claims["sub"]:
+        audit.record(db, action="auth.login_failed", entity_type="user", entity_id=user.id, actor_id=user.id,
+                     after={"method": "google", "reason": "google_account_mismatch"}, ctx=ctx)
+        db.commit()
+        raise AppError("google_account_mismatch", "This email is linked to a different Google account", 403)
+    return _complete_login(db, user, ctx, "google")
 
 
 def mfa_disable(db: Session, user: User, password: str, code: str, ctx: RequestContext) -> None:
