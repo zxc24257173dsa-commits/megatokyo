@@ -159,6 +159,19 @@ def list_orders(status: str | None = None, exceptions_only: bool = False, livest
     return [dict(r) for r in rows]
 
 
+@router.get("/livestreams")
+def list_livestreams(limit: int = Query(default=100, le=500), _: CurrentUser = Depends(orders_view),
+                     db: Session = Depends(get_db)):
+    rows = db.execute(text("""
+        SELECT l.id, l.external_id, l.title, l.status, l.scheduled_at, l.started_at, l.ended_at,
+               count(o.id) AS orders,
+               count(o.id) FILTER (WHERE o.status IN ('pending_fulfillment', 'completed')) AS paid_orders,
+               COALESCE(sum(o.item_subtotal) FILTER (WHERE o.status IN ('pending_fulfillment', 'completed')), 0) AS paid_sales
+          FROM livestreams l LEFT JOIN sales_orders o ON o.livestream_id = l.id
+         GROUP BY l.id ORDER BY COALESCE(l.scheduled_at, l.created_at) DESC LIMIT :limit"""), {"limit": limit}).mappings().all()
+    return [dict(r) for r in rows]
+
+
 @router.get("/orders/unmapped-products")
 def unmapped_products(_: CurrentUser = Depends(orders_view), db: Session = Depends(get_db)):
     """Lines without a SKU, grouped per product (auction titles without their #N), most sold first."""

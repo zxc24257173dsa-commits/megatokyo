@@ -148,8 +148,9 @@ export function AccountPage() {
       <div className="page-head">
         <h1>我的帳號</h1>
         <div className="row">
-          {(can("import.cost") || can("catalog.edit")) && <Link className="btn" to="/imports">試算表匯入</Link>}
+          {(can("import.cost") || can("catalog.edit") || can("import.sales")) && <Link className="btn" to="/imports">試算表匯入</Link>}
           {can("users.manage") && <Link className="btn" to="/users">使用者</Link>}
+          {can("integration.manage") && <Link className="btn" to="/settings/whatnot">Whatnot 串接</Link>}
           <button className="btn" onClick={() => void logout()}>登出</button>
         </div>
       </div>

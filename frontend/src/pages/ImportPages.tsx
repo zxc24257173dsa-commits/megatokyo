@@ -7,7 +7,7 @@ import { ErrorBox, Loading, fmtDateTime, fmtInt, fmtUsd } from "../components/ui
 
 interface Job {
   id: number;
-  import_type: "purchase_cost" | "sku_master";
+  import_type: "purchase_cost" | "sku_master" | "whatnot_orders";
   filename: string;
   status: string;
   created_at: string;
@@ -27,7 +27,7 @@ interface Row {
   normalized: Record<string, any>;
 }
 
-const TYPE_LABEL: Record<string, string> = { purchase_cost: "採購成本", sku_master: "商品主檔" };
+const TYPE_LABEL: Record<string, string> = { purchase_cost: "採購成本", sku_master: "商品主檔", whatnot_orders: "Whatnot 訂單（CSV）" };
 const STATUS: Record<string, [string, string]> = {
   uploaded: ["已上傳", ""],
   parsed: ["需要對應欄位", "warn"],
@@ -43,13 +43,17 @@ const ACTION: Record<string, [string, string]> = {
   update: ["更新", "info"],
   unchanged: ["沒有變更", ""],
   skip_example: ["範例列略過", ""],
+  import_unmapped: ["將匯入・待對應 SKU", "warn"],
+  import_unpaid: ["將匯入（未付款／取消）", ""],
+  skip_existing: ["已在系統中", ""],
   error: ["錯誤", "danger"],
 };
 
 export function ImportsPage() {
   const { can } = useAuth();
   const nav = useNavigate();
-  const types = (["purchase_cost", "sku_master"] as const).filter((t) => can(t === "purchase_cost" ? "import.cost" : "catalog.edit"));
+  const PERM = { purchase_cost: "import.cost", sku_master: "catalog.edit", whatnot_orders: "import.sales" } as const;
+  const types = (["purchase_cost", "sku_master", "whatnot_orders"] as const).filter((t) => can(PERM[t]));
   const [type, setType] = useState<string>(types[0] ?? "purchase_cost");
   const [file, setFile] = useState<File | null>(null);
   const list = useQuery({ queryKey: ["imports"], queryFn: () => api<Job[]>("/imports") });
@@ -113,13 +117,14 @@ export function ImportDetailPage() {
   });
   const [createSkus, setCreateSkus] = useState(false);
   const [skipErrors, setSkipErrors] = useState(false);
+  const [markShipped, setMarkShipped] = useState(false);
   const refresh = (j: Job) => {
     qc.setQueryData(["import", id], j);
     void qc.invalidateQueries({ queryKey: ["import-rows", id] });
     void qc.invalidateQueries({ queryKey: ["imports"] });
   };
   const commit = useMutation({
-    mutationFn: () => api<{ job: Job; summary: Record<string, any> }>(`/imports/${id}/commit`, { body: { create_missing_skus: createSkus, skip_error_rows: skipErrors } }),
+    mutationFn: () => api<{ job: Job; summary: Record<string, any> }>(`/imports/${id}/commit`, { body: { create_missing_skus: createSkus, skip_error_rows: skipErrors, mark_shipped: markShipped } }),
     onSuccess: (r) => {
       refresh({ ...job.data!, ...r.job });
       void qc.invalidateQueries({ queryKey: ["skus"] });
@@ -132,7 +137,10 @@ export function ImportDetailPage() {
   const j = job.data;
   const by = j.stats.by_action ?? {};
   const isCost = j.import_type === "purchase_cost";
-  const willImport = isCost ? (by.import ?? 0) + (by.import_new_sku ?? 0) : (by.create ?? 0) + (by.update ?? 0);
+  const isOrders = j.import_type === "whatnot_orders";
+  const willImport = isOrders
+    ? (by.import ?? 0) + (by.import_unmapped ?? 0) + (by.import_unpaid ?? 0)
+    : isCost ? (by.import ?? 0) + (by.import_new_sku ?? 0) : (by.create ?? 0) + (by.update ?? 0);
   const open = j.status === "validated" || j.status === "parsed";
 
   return (
@@ -150,19 +158,22 @@ export function ImportDetailPage() {
       {j.status !== "parsed" && (
         <div className="tiles">
           <div className="tile"><div className="label">{j.status === "committed" ? "已匯入" : "將匯入"}</div><div className="value">{fmtInt(willImport)}</div>
-            <div className="sub">{isCost ? `其中新 SKU ${fmtInt(by.import_new_sku ?? 0)}` : `新增 ${fmtInt(by.create ?? 0)}・更新 ${fmtInt(by.update ?? 0)}`}</div></div>
+            <div className="sub">{isOrders ? `待對應 SKU ${fmtInt(by.import_unmapped ?? 0)}・未付款 ${fmtInt(by.import_unpaid ?? 0)}` : isCost ? `其中新 SKU ${fmtInt(by.import_new_sku ?? 0)}` : `新增 ${fmtInt(by.create ?? 0)}・更新 ${fmtInt(by.update ?? 0)}`}</div></div>
           <div className="tile"><div className="label">錯誤</div><div className="value" style={{ color: j.stats.errors ? "var(--danger)" : undefined }}>{fmtInt(j.stats.errors)}</div><div className="sub">需修正或略過</div></div>
           <div className="tile"><div className="label">提醒</div><div className="value">{fmtInt(j.stats.warnings)}</div><div className="sub">可匯入，請確認</div></div>
-          <div className="tile"><div className="label">略過</div><div className="value">{fmtInt((by.skip_example ?? 0) + (by.unchanged ?? 0))}</div><div className="sub">範例列{isCost ? "" : "・沒有變更"}</div></div>
+          <div className="tile"><div className="label">略過</div><div className="value">{fmtInt((by.skip_example ?? 0) + (by.unchanged ?? 0) + (by.skip_existing ?? 0))}</div><div className="sub">{isOrders ? "已在系統中的訂單" : `範例列${isCost ? "" : "・沒有變更"}`}</div></div>
         </div>
       )}
 
       {j.status === "committed" && j.stats.result && (
         <div className="alert ok">
-          匯入完成：{isCost
+          匯入完成：{isOrders
+            ? `${j.stats.result.orders} 筆訂單（${j.stats.result.lines} 件商品），已付款成交額 ${fmtUsd(j.stats.result.revenue_usd)}${j.stats.result.unmapped_lines ? `；${j.stats.result.unmapped_lines} 件待對應 SKU` : ""}。`
+            : isCost
             ? `${j.stats.result.batches} 個採購批次、${j.stats.result.lines} 筆成本，落地成本合計 ${fmtUsd(j.stats.result.landed_total_usd)}${j.stats.result.new_skus ? `，新增 ${j.stats.result.new_skus} 個 SKU` : ""}。成本已入帳；商品從日本寄出時，到「採購批次」按「寄出」，美國收到後按「簽收」。`
             : `新增 ${j.stats.result.created} 個 SKU、更新 ${j.stats.result.updated} 個 SKU。`}
           {isCost && <> <Link to="/purchasing">前往採購批次 →</Link></>}
+          {isOrders && <> <Link to="/orders?tab=unmapped">前往對應商品 →</Link></>}
         </div>
       )}
 
@@ -174,6 +185,10 @@ export function ImportDetailPage() {
             <label className="row small" style={{ marginBottom: 8 }}><input type="checkbox" checked={createSkus} onChange={(e) => setCreateSkus(e.target.checked)} />
               一併建立 {by.import_new_sku} 個系統中還沒有的 SKU</label>
           )}
+          {isOrders && (
+            <label className="row small" style={{ marginBottom: 8 }}><input type="checkbox" checked={markShipped} onChange={(e) => setMarkShipped(e.target.checked)} />
+              這些訂單都已經寄出（扣除美國庫存）。不勾選時只預留庫存，之後由 API 同步出貨狀態。</label>
+          )}
           {(j.stats.errors ?? 0) > 0 && (
             <label className="row small" style={{ marginBottom: 8 }}><input type="checkbox" checked={skipErrors} onChange={(e) => setSkipErrors(e.target.checked)} />
               略過 {j.stats.errors} 筆有錯誤的列，只匯入正確的列</label>
@@ -182,7 +197,7 @@ export function ImportDetailPage() {
             <button className="btn primary" disabled={commit.isPending || willImport === 0} onClick={() => commit.mutate()}>
               {commit.isPending ? "匯入中…" : `確認匯入 ${willImport} 列`}
             </button>
-            <span className="small muted">{isCost ? "匯入的是成本紀錄；確認後不可修改，也不會直接增加庫存。" : "庫存與成本欄位不會從商品主檔匯入。"}</span>
+            <span className="small muted">{isOrders ? "買家帳號、地址不會保存；匯入完成後原始檔案會刪除。" : isCost ? "匯入的是成本紀錄；確認後不可修改，也不會直接增加庫存。" : "庫存與成本欄位不會從商品主檔匯入。"}</span>
           </div>
         </div>
       )}
@@ -194,7 +209,7 @@ export function ImportDetailPage() {
               <button key={k} className={`btn sm ${filter === k ? "primary" : ""}`} onClick={() => setFilter(k)}>{l}</button>
             ))}
           </div>
-          {rows.isLoading ? <Loading /> : !rows.data?.length ? <div className="muted small">沒有資料列</div> : <RowsTable rows={rows.data} isCost={isCost} />}
+          {rows.isLoading ? <Loading /> : !rows.data?.length ? <div className="muted small">沒有資料列</div> : isOrders ? <OrderRowsTable rows={rows.data} /> : <RowsTable rows={rows.data} isCost={isCost} />}
         </div>
       )}
     </>
@@ -310,6 +325,36 @@ function MappingCard({ job, onSaved }: { job: Job; onSaved: (j: Job) => void }) 
           <button className="btn primary" disabled={save.isPending} onClick={() => save.mutate()}>{save.isPending ? "檢查中…" : "套用並重新檢查"}</button>
         </>
       )}
+    </div>
+  );
+}
+
+function OrderRowsTable({ rows }: { rows: Row[] }) {
+  return (
+    <div className="table-wrap">
+      <table className="data responsive">
+        <thead><tr><th>列</th><th>狀態</th><th>訂單</th><th>商品</th><th className="num">數量</th><th className="num">成交價</th><th>說明</th></tr></thead>
+        <tbody>
+          {rows.map((r) => {
+            const n = r.normalized;
+            const a = ACTION[r.action] ?? [r.action, ""];
+            return (
+              <tr key={r.row_number}>
+                <td className="lead">第 {r.row_number} 列</td>
+                <td data-label="狀態"><span className={`badge ${a[1]}`}>{a[0]}</span></td>
+                <td data-label="訂單" className="mono">{n.order_id ?? "—"}</td>
+                <td data-label="商品" className="small">{n.title ?? "—"}</td>
+                <td data-label="數量" className="num">{n.qty ?? "—"}</td>
+                <td data-label="成交價" className="num">{n.price !== undefined ? fmtUsd(n.price) : "—"}</td>
+                <td data-label="說明" className="small" style={{ minWidth: 200 }}>
+                  {r.errors.map((e, i) => <div key={i} style={{ color: "var(--danger)" }}>✖ {e}</div>)}
+                  {r.warnings.map((w, i) => <div key={i} style={{ color: "var(--muted)" }}>! {w}</div>)}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }

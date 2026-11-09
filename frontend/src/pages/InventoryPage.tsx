@@ -47,6 +47,7 @@ export default function InventoryPage() {
         <h1>庫存總覽</h1>
         {can("catalog.edit") && (
           <div className="row">
+            <Link className="btn" to="/stock/operations">入庫/調整</Link>
             <Link className="btn" to="/bundles/new">
               新增組合商品
             </Link>
