@@ -1,6 +1,7 @@
 # Phase 4：CSV / Excel 成本匯入
 
-> 依據：業主提供的 `Whatnot_ERP_CSV_Excel_Template_EN.xlsx`（2026-11-09，暫定版）。
+> 依據：業主提供的 `Whatnot_ERP_CSV_Excel_Template_EN.xlsx`（2026-11-09，暫定版），
+> 以及業主確認的規則：**匯率寫成「1 USD = 150 JPY」、運費是日幣、關稅是 USD**。
 > 正確版本提供後，只需調整欄位同義詞或規則，匯入流程本身不變。
 
 ## 流程
@@ -35,10 +36,10 @@
 | Purchase Quantity | 數量 | 正整數 |
 | Unit Purchase Cost | 單價（原幣） | ≥ 0；可含 ¥、$、千分位 |
 | Purchase Currency | 幣別 | USD / JPY / TWD（也接受 円、日幣、US$、台幣…） |
-| Exchange Rate to USD | 匯率（1 原幣 = ? USD） | **非 USD 必填，系統不會自行假設匯率**；JPY 需在 0.003–0.02、TWD 0.02–0.06；寫反（如 151.5）會被擋下並提示正確值 |
-| Domestic Japan Shipping (USD) | 日本境內運費 | USD，空白 = 0 |
-| International Freight Allocation (USD) | 國際運費 | USD，空白 = 0 |
-| Duties/Other Costs (USD) | 關稅／其他 | USD，空白 = 0 |
+| Exchange Rate | 匯率（**1 USD = ? 原幣**，例：150） | **非 USD 必填，系統不會自行假設匯率**；JPY 需在 70–300、TWD 20–50；USD 為 1 或空白；寫成另一種方向（如 0.0067）會被擋下並提示正確值（約 149.25） |
+| Domestic Japan Shipping | 日本境內運費 | **日幣**，以該列匯率換算成 USD；空白 = 0 |
+| International Freight Allocation | 國際運費 | **日幣**，以該列匯率換算成 USD；空白 = 0 |
+| Duties/Other Costs (USD) | 關稅／其他 | **USD**，空白 = 0 |
 | Purchase Cost / Total Batch Cost / Landed Cost per Unit | （核對用） | **以系統計算為準**；試算表有值且相差超過 0.01 時提醒 |
 | Costing Method | — | 系統統一 FIFO；寫 Weighted Average 會提醒 |
 | Supplier | 供應商 | 不存在時自動建立 |
@@ -47,10 +48,17 @@
 **計算方式：**
 
 ```
-採購成本 USD   = 數量 × 單價 × 匯率
-落地成本合計   = 採購成本 + 日本境內運費 + 國際運費 + 關稅/其他
-每件落地成本   = 落地成本合計 ÷ 數量
+採購成本 USD   = 數量 × 單價 ÷ 匯率                    （例：24 × ¥6,800 ÷ 150 = $1,088.00）
+運費 USD       = (日本境內運費 + 國際運費)（日幣）÷ 匯率   （例：(¥2,775 + ¥6,300) ÷ 150 = $60.50）
+落地成本合計   = 採購成本 + 運費 + 關稅/其他               （例：1,088.00 + 60.50 + 12.00 = $1,160.50）
+每件落地成本   = 落地成本合計 ÷ 數量                      （例：$48.354167）
 ```
+
+**運費欄的幣別依標題判斷**：標題寫 JPY 或沒寫幣別 → 日幣；標題明確寫 USD（例如第一版範本的
+「Domestic Japan Shipping (USD)」）→ 美金。運費換算後比商品採購成本還高時會提醒，避免幣別填錯。
+日幣運費只能在採購幣別為 JPY 的列使用（需要該列的日幣匯率換算）。
+
+系統保存原始填寫的匯率（`fx_rate_quote`）與日幣運費（`domestic_shipping_jpy`、`intl_freight_jpy`），可隨時對帳。
 
 範例列（含 EXAMPLE、Sample…Replace、Example row、示例等）自動略過。
 
@@ -91,9 +99,17 @@
 - `purchase_lines`：運費／關稅改為 USD 欄位（`domestic_shipping_base`、`intl_freight_base`、`duty_other_base`），新增 `purchase_cost_base`、`note`
 - 匯入類型新增 `sku_master`
 
+## 資料庫變更（Migration 0007）
+
+- `purchase_lines.fx_rate_quote`：試算表上填的匯率（1 USD = ? 原幣）
+- `purchase_lines.domestic_shipping_jpy`、`intl_freight_jpy`：原始日幣運費
+
+## 業主已確認（2026-11-09）
+
+- 運費（日本境內、國際）是日幣；關稅是 USD
+- 匯率寫法：1 USD = 150 JPY
+
 ## 等正確版本時要確認的事
 
-1. 運費、關稅是否一定以 USD 填寫？還是可能是日幣？（目前依範本：USD）
-2. 一個 Cost Batch ID 是否會包含多個 SKU？（目前支援）
-3. 需求書提到的「日幣 / 美金 / 台幣」三個金額欄位，正式版本是否會有？
-4. 匯率的寫法是「1 JPY = 0.0067 USD」（目前）還是「1 USD = 150 JPY」？
+1. 一個 Cost Batch ID 是否會包含多個 SKU？（目前兩種都支援）
+2. 需求書提到的「日幣 / 美金 / 台幣」三個金額欄位，正式版本是否會有？

@@ -207,7 +207,7 @@ function RowsTable({ rows, isCost }: { rows: Row[]; isCost: boolean }) {
       <table className="data responsive">
         <thead>
           {isCost ? (
-            <tr><th>列</th><th>狀態</th><th>批次 / SKU</th><th className="num">數量</th><th className="num">單價</th><th className="num">匯率</th><th className="num">落地成本/件</th><th>說明</th></tr>
+            <tr><th>列</th><th>狀態</th><th>批次 / SKU</th><th className="num">數量</th><th className="num">單價</th><th className="num">匯率（1 USD =）</th><th className="num">落地成本/件</th><th>說明</th></tr>
           ) : (
             <tr><th>列</th><th>狀態</th><th>SKU</th><th>名稱</th><th>分類</th><th className="num">售價</th><th className="num">安全庫存</th><th>說明</th></tr>
           )}
@@ -229,7 +229,7 @@ function RowsTable({ rows, isCost }: { rows: Row[]; isCost: boolean }) {
                 <td data-label="批次 / SKU"><div className="mono">{n.sku_code ?? "—"}</div><div className="small muted">{n.batch_no ?? n.batch_ref ?? ""}{n.purchase_date ? ` · ${n.purchase_date}` : ""}</div></td>
                 <td data-label="數量" className="num">{n.qty ?? "—"}</td>
                 <td data-label="單價" className="num">{n.unit_cost ? `${Number(n.unit_cost).toLocaleString()} ${n.currency ?? ""}` : "—"}</td>
-                <td data-label="匯率" className="num">{n.fx_rate ?? "—"}</td>
+                <td data-label="匯率（1 USD =）" className="num">{n.fx_quote ? `${Number(n.fx_quote)} ${n.currency ?? ""}` : "—"}</td>
                 <td data-label="落地成本/件" className="num">{n.landed_unit_usd ? fmtUsd(n.landed_unit_usd) : "—"}</td>
                 {notes}
               </tr>

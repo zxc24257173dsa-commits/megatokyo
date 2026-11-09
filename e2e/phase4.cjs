@@ -36,7 +36,7 @@ async function upload(page, file, typeLabel = "採購成本") {
   // 1. The owner's template as delivered: only example rows -> nothing to import
   await upload(page, TEMPLATE);
   await page.waitForURL(/\/imports\/\d+/);
-  await page.getByText("工作表「Purchase Cost Batches」第 1 列是標題，已對應 17 個欄位").waitFor();
+  await page.getByText(/工作表「Purchase Cost Batches」第 1 列是標題，已對應 17 個欄位/).waitFor();
   await page.getByRole("button", { name: "確認匯入 0 列" }).waitFor();
   if (!(await page.getByRole("button", { name: "確認匯入 0 列" }).isDisabled())) throw new Error("should not allow importing 0 rows");
   await page.getByText("範例列，不會匯入").waitFor();
@@ -50,7 +50,7 @@ async function upload(page, file, typeLabel = "採購成本") {
   await page.waitForURL(/\/imports\/\d+/);
   await page.getByText("其中新 SKU 2").waitFor();
   await page.getByRole("button", { name: "錯誤", exact: true }).click();
-  await page.getByText(/匯率看起來寫反了/).waitFor();
+  await page.getByText(/匯率看起來是「1 JPY = 0.0066 USD」的寫法.*約 151.52/).waitFor();
   await page.getByRole("button", { name: "全部", exact: true }).click();
   await page.waitForTimeout(300);
   await page.screenshot({ path: path.join(OUT, "p4-01-preview.png"), fullPage: true });
@@ -92,16 +92,18 @@ async function upload(page, file, typeLabel = "採購成本") {
   if (overflow > 1) throw new Error("horizontal overflow on phone: " + overflow);
   step("received 10/24 on phone; no horizontal scrolling");
 
-  // 6. Inventory: JP 10 at landed cost 47.900833 -> $479.01
+  // 6. Inventory: JP 10 boxes. Landed cost per box:
+  //    24 x 6800 / 150 = 1088.00 ; shipping (2775 + 6300) JPY / 150 = 60.50 ; duty 12 USD -> 1160.50 / 24 = 48.354167
+  //    10 boxes -> $483.54
   await page.goto(BASE + "/");
   await page.reload();
   await page.waitForTimeout(2000);
   await page.getByText("PK151-BOX-JP").waitFor();
   row = (await page.locator("tr", { hasText: "PK151-BOX-JP" }).innerText()).replace(/\s+/g, " ");
   console.log("  inventory row:", row);
-  if (!row.includes("$479.01") || !/JP\)? .*10 0 0 0 0/.test(row)) throw new Error("unexpected inventory row");
+  if (!row.includes("$483.54") || !/JP\)? .*10 0 0 0 0/.test(row)) throw new Error("unexpected inventory row");
   await page.screenshot({ path: path.join(OUT, "p4-03-inventory.png") });
-  step("Japan stock 10, valued at the landed cost ($479.01)");
+  step("Japan stock 10, valued at the landed cost ($483.54)");
 
   await browser.close();
   if (errors.length) { console.log("PAGE ERRORS:\n" + errors.join("\n")); process.exit(1); }

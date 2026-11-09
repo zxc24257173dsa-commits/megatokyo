@@ -28,7 +28,10 @@ interface Line {
   unit_price_orig?: string;
   currency_orig?: string;
   fx_rate_to_base?: string;
+  fx_rate_quote?: string | null;
   purchase_cost_base?: string;
+  domestic_shipping_jpy?: string;
+  intl_freight_jpy?: string;
   domestic_shipping_base?: string;
   intl_freight_base?: string;
   duty_other_base?: string;
@@ -115,8 +118,10 @@ export function PurchaseBatchPage() {
           </div>
           {cost && (
             <dl className="kv" style={{ marginBottom: 12 }}>
-              <dt>採購</dt><dd>{fmtInt(l.qty)} × {Number(l.unit_price_orig).toLocaleString()} {l.currency_orig}（匯率 {Number(l.fx_rate_to_base)}）= {fmtUsd(l.purchase_cost_base)}</dd>
-              <dt>運費 / 關稅</dt><dd>日本境內 {fmtUsd(l.domestic_shipping_base)}・國際 {fmtUsd(l.intl_freight_base)}・關稅/其他 {fmtUsd(l.duty_other_base)}</dd>
+              <dt>採購</dt><dd>{fmtInt(l.qty)} × {Number(l.unit_price_orig).toLocaleString()} {l.currency_orig}
+                {l.currency_orig !== "USD" && l.fx_rate_quote && `（1 USD = ${Number(l.fx_rate_quote)} ${l.currency_orig}）`} = {fmtUsd(l.purchase_cost_base)}</dd>
+              <dt>運費</dt><dd>日本境內 {Number(l.domestic_shipping_jpy) ? `¥${Number(l.domestic_shipping_jpy).toLocaleString()} → ` : ""}{fmtUsd(l.domestic_shipping_base)}・國際 {Number(l.intl_freight_jpy) ? `¥${Number(l.intl_freight_jpy).toLocaleString()} → ` : ""}{fmtUsd(l.intl_freight_base)}</dd>
+              <dt>關稅/其他</dt><dd>{fmtUsd(l.duty_other_base)}</dd>
               <dt>落地成本</dt><dd><b>{fmtUsd(l.landed_unit_cost_base)}</b> / 件（合計 {fmtUsd(l.landed_total_base)}）</dd>
             </dl>
           )}

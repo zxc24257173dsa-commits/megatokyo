@@ -10,11 +10,15 @@ from sqlalchemy import text
 from tests.conftest import auth_header, idem, token_for
 from tests.test_catalog import EDITOR, create_product
 
+# Owner's rules (2026-11-09): rate written as 1 USD = N JPY, shipping in JPY, duty in USD.
 COST_HEADERS = ["Cost Batch ID", "SKU", "Product Name", "Purchase Date", "Purchase Quantity", "Unit Purchase Cost",
-                "Purchase Currency", "Exchange Rate to USD", "Purchase Cost (USD)", "Domestic Japan Shipping (USD)",
-                "International Freight Allocation (USD)", "Duties/Other Costs (USD)", "Total Batch Cost (USD)",
+                "Purchase Currency", "Exchange Rate (1 USD =)", "Purchase Cost (USD)", "Domestic Japan Shipping (JPY)",
+                "International Freight Allocation (JPY)", "Duties/Other Costs (USD)", "Total Batch Cost (USD)",
                 "Landed Cost per Unit (USD)", "Costing Method (FIFO/Weighted Average)", "Supplier", "Source Filename",
                 "Notes"]
+# The original template (shipping headers say USD).
+TEMPLATE_HEADERS = [h.replace("(JPY)", "(USD)").replace("Exchange Rate (1 USD =)", "Exchange Rate to USD")
+                    for h in COST_HEADERS]
 EXAMPLE = ["LOT-EXAMPLE", "SKU-001", "Sample Product - Replace", None, 10, 500, "JPY", 0.0067, "=F2*H2*E2", 2, 5, 1,
            "=I2+J2+K2+L2", "=IF(E2=0,0,M2/E2)", "FIFO", None, None, "Example row; exchange rate is illustrative"]
 COSTER = (*EDITOR,)  # jp_inventory has import.cost; tw_manager too
@@ -23,7 +27,7 @@ COSTER = (*EDITOR,)  # jp_inventory has import.cost; tw_manager too
 def cost_row(batch, sku, name, d, qty, unit, cur, fx, dom=0, intl=0, duty=0, method="FIFO", supplier="Tokyo Wholesale",
              r=None):
     r = r or 3
-    return [batch, sku, name, d, qty, unit, cur, fx, f"=F{r}*H{r}*E{r}", dom, intl, duty, f"=I{r}+J{r}+K{r}+L{r}",
+    return [batch, sku, name, d, qty, unit, cur, fx, f"=E{r}*F{r}/H{r}", dom, intl, duty, f"=I{r}+J{r}/H{r}+K{r}/H{r}+L{r}",
             f"=IF(E{r}=0,0,M{r}/E{r})", method, supplier, None, None]
 
 
@@ -61,8 +65,8 @@ def commit(api, tok, job_id, **opts):
 def test_template_layout_detected_example_skipped_and_costs_computed(api, db):
     _, tok = token_for(api, db, *COSTER)
     create_product(api, tok, codes=("PK151-BOX",))
-    data = workbook([EXAMPLE, cost_row("B-2026-001", "pk151-box", "151 Box", "2026-10-20", 10, 500, "JPY", 0.0067,
-                                       dom=2, intl=5, duty=1)])
+    data = workbook([EXAMPLE, cost_row("B-2026-001", "pk151-box", "151 Box", "2026-10-20", 10, 500, "JPY", 150,
+                                       dom=300, intl=750, duty=1)])
     r = upload(api, tok, data)
     assert r.status_code == 201, r.text
     job = r.json()
@@ -74,24 +78,28 @@ def test_template_layout_detected_example_skipped_and_costs_computed(api, db):
     real = rows[3]
     assert real["action"] == "import" and real["errors"] == []
     nz = real["normalized"]
-    # 10 x 500 JPY x 0.0067 = 33.50 ; + 2 + 5 + 1 = 41.50 ; / 10 = 4.15
-    assert (nz["purchase_cost_usd"], nz["landed_total_usd"], nz["landed_unit_usd"]) == ("33.5000", "41.5000", "4.150000")
+    # 10 x 500 JPY / 150 = 33.3333 ; shipping (300 + 750) JPY / 150 = 7.00 ; duty 1 USD ; total 41.3333 ; / 10
+    assert (nz["purchase_cost_usd"], nz["landed_total_usd"], nz["landed_unit_usd"]) == ("33.3333", "41.3333", "4.133330")
+    assert (nz["fx_quote"], nz["domestic_shipping_usd"], nz["intl_freight_usd"]) == ("150", "2.0000", "5.0000")
     assert job["stats"]["by_action"] == {"skip_example": 1, "import": 1}
 
 
 def test_commit_writes_frozen_cost_records_but_no_stock(api, db):
     _, tok = token_for(api, db, *COSTER)
     sid = create_product(api, tok, codes=("OP09-BOX",))["sku_ids"][0]
-    data = workbook([cost_row("B-OP09-01", "OP09-BOX", "OP09", "2026-10-01", 20, 6800, "JPY", "0.0066", intl=12)])
+    data = workbook([cost_row("B-OP09-01", "OP09-BOX", "OP09", "2026-10-01", 20, 6800, "JPY", 150, intl=1800)])
     job = upload(api, tok, data).json()
     res = commit(api, tok, job["id"])
     assert res.status_code == 200, res.text
-    assert res.json()["summary"] == {"batches": 1, "lines": 1, "new_skus": 0, "landed_total_usd": "909.60",
+    # 20 x 6800 / 150 = 906.6667 ; freight 1800 JPY / 150 = 12.00 ; total 918.6667
+    assert res.json()["summary"] == {"batches": 1, "lines": 1, "new_skus": 0, "landed_total_usd": "918.67",
                                      "skipped_error_rows": 0}
     batch = db.execute(text("SELECT id, status FROM purchase_batches WHERE batch_no = 'B-OP09-01'")).one()
     assert batch.status == "confirmed"
     line = db.execute(text("SELECT * FROM purchase_lines WHERE batch_id = :b"), {"b": batch.id}).mappings().one()
-    assert line["landed_unit_cost_base"] == Decimal("45.480000") and line["source_import_row_id"] is not None
+    assert line["landed_unit_cost_base"] == Decimal("45.933335") and line["source_import_row_id"] is not None
+    assert (line["fx_rate_quote"], line["intl_freight_jpy"], line["intl_freight_base"]) == (
+        Decimal("150"), Decimal("1800"), Decimal("12"))
     # importing cost does NOT create stock
     jp = api.get(f"/api/v1/skus/{sid}", headers=auth_header(tok)).json()["jp_on_hand"]
     assert jp == 0
@@ -106,7 +114,7 @@ def test_commit_writes_frozen_cost_records_but_no_stock(api, db):
 def test_new_sku_requires_confirmation(api, db):
     _, tok = token_for(api, db, *COSTER)
     job = upload(api, tok, workbook([cost_row("B-NEW", "NEW-SKU-1", "Dragon Ball Box", "2026-09-01", 5, 4000, "JPY",
-                                              0.0068)])).json()
+                                              147)])).json()
     row = rows_of(api, tok, job["id"])[2]
     assert row["action"] == "import_new_sku" and "建立新商品" in row["warnings"][0]
     r = commit(api, tok, job["id"])
@@ -118,21 +126,51 @@ def test_new_sku_requires_confirmation(api, db):
 
 
 def test_exchange_rate_rules(api, db):
+    """Rate is written as 1 USD = N <currency>."""
     _, tok = token_for(api, db, *COSTER)
     create_product(api, tok, codes=("FX-1",))
     job = upload(api, tok, workbook([
-        cost_row("FX-A", "FX-1", "x", "2026-10-01", 1, 1000, "JPY", 150, r=2),       # inverted
+        cost_row("FX-A", "FX-1", "x", "2026-10-01", 1, 1000, "JPY", 0.0067, r=2),    # other convention
         cost_row("FX-B", "FX-1", "x", "2026-10-01", 1, 1000, "JPY", None, r=3),      # missing
         cost_row("FX-C", "FX-1", "x", "2026-10-01", 1, 25, "USD", None, r=4),        # USD -> 1
         cost_row("FX-D", "FX-1", "x", "2026-10-01", 1, 25, "US$", 1.2, r=5),         # USD must be 1
-        cost_row("FX-E", "FX-1", "x", "2026-10-01", 1, 300, "台幣", 0.031, r=6),      # alias for TWD
+        cost_row("FX-E", "FX-1", "x", "2026-10-01", 1, 320, "台幣", 32, r=6),         # TWD alias
+        cost_row("FX-F", "FX-1", "x", "2026-10-01", 1, 1515, "JPY", 151.5, r=7),     # normal
+        cost_row("FX-G", "FX-1", "x", "2026-10-01", 1, 1000, "円", 1000, r=8),        # out of range
     ])).json()
     rows = rows_of(api, tok, job["id"])
-    assert "寫反" in rows[2]["errors"][0] and "0.006667" in rows[2]["errors"][0]
+    assert "1 USD = ? JPY" in rows[2]["errors"][0] and "149.25" in rows[2]["errors"][0]
     assert "不會自行假設匯率" in rows[3]["errors"][0]
-    assert rows[4]["errors"] == [] and rows[4]["normalized"]["fx_rate"] == "1"
+    assert rows[4]["errors"] == [] and rows[4]["normalized"]["fx_quote"] == "1"
     assert "匯率應為 1" in rows[5]["errors"][0]
     assert rows[6]["errors"] == [] and rows[6]["normalized"]["currency"] == "TWD"
+    assert rows[6]["normalized"]["purchase_cost_usd"] == "10.0000"   # 320 TWD / 32
+    assert rows[7]["errors"] == [] and rows[7]["normalized"]["purchase_cost_usd"] == "10.0000"  # 1515 / 151.5
+    assert "不在合理範圍" in rows[8]["errors"][0]
+
+
+def test_original_template_usd_shipping_headers(api, db):
+    """The first template's shipping headers say (USD): those amounts are taken as USD."""
+    _, tok = token_for(api, db, *COSTER)
+    create_product(api, tok, codes=("USDH-1",))
+    row = cost_row("USDH", "USDH-1", "x", "2026-10-01", 10, 1500, "JPY", 150, dom=2, intl=5, duty=1, r=2)
+    job = upload(api, tok, workbook([row], headers=TEMPLATE_HEADERS)).json()
+    assert {"domestic_shipping_usd", "intl_freight_usd"} <= set(job["mapping"]["columns"])
+    assert not {"domestic_shipping_jpy", "intl_freight_jpy"} & set(job["mapping"]["columns"])
+    nz = rows_of(api, tok, job["id"])[2]["normalized"]
+    assert (nz["domestic_shipping_usd"], nz["intl_freight_usd"], nz["landed_total_usd"]) == ("2.0000", "5.0000", "108.0000")
+
+
+def test_jpy_shipping_rules(api, db):
+    _, tok = token_for(api, db, *COSTER)
+    create_product(api, tok, codes=("SHIP-1",))
+    job = upload(api, tok, workbook([
+        cost_row("S-1", "SHIP-1", "x", "2026-10-01", 1, 20, "USD", 1, dom=500, r=2),        # yen shipping, no yen rate
+        cost_row("S-2", "SHIP-1", "x", "2026-10-01", 1, 300, "JPY", 150, intl=3000, r=3),   # shipping > goods
+    ])).json()
+    rows = rows_of(api, tok, job["id"])
+    assert "沒有日幣匯率" in rows[2]["errors"][0]
+    assert any("比商品採購成本" in w for w in rows[3]["warnings"])
 
 
 def test_errors_block_commit_unless_skipped(api, db):
@@ -172,7 +210,7 @@ def test_batch_consistency_and_duplicates(api, db):
 def test_cross_check_warning_and_weighted_average_notice(api, db):
     _, tok = token_for(api, db, *COSTER)
     create_product(api, tok, codes=("CC-1",))
-    row = cost_row("CC", "CC-1", "x", "2026-10-01", 4, 10, "USD", 1, dom=2, method="Weighted Average", r=2)
+    row = cost_row("CC", "CC-1", "x", "2026-10-01", 4, 10, "USD", 1, duty=2, method="Weighted Average", r=2)
     row[13] = 9.99  # sheet says 9.99 per unit; real landed cost is (40 + 2) / 4 = 10.50
     job = upload(api, tok, workbook([row])).json()
     w = rows_of(api, tok, job["id"])[2]["warnings"]
@@ -190,19 +228,19 @@ def test_uncalculated_formula_in_input_column_is_reported(api, db):
 def test_japanese_csv_in_shift_jis(api, db):
     _, tok = token_for(api, db, *COSTER)
     create_product(api, tok, codes=("JP-CSV-1",))
-    csv_text = "品番,商品名,仕入日,数量,単価,通貨,為替レート,国際送料\nJP-CSV-1,テスト,2026/10/03,6,\"1,200\",円,0.0067,3.00\n"
+    csv_text = "品番,商品名,仕入日,数量,単価,通貨,為替レート,国際送料\nJP-CSV-1,テスト,2026/10/03,6,\"1,200\",円,150,450\n"
     job = upload(api, tok, csv_text.encode("cp932"), name="仕入.csv").json()
     assert job["status"] == "validated", job
     row = rows_of(api, tok, job["id"])[2]
     assert row["errors"] == [] and row["normalized"]["currency"] == "JPY" and row["normalized"]["unit_cost"] == "1200"
-    assert row["normalized"]["landed_total_usd"] == "51.2400"  # 6 x 1200 x 0.0067 + 3
+    assert row["normalized"]["landed_total_usd"] == "51.0000"  # 6 x 1200 / 150 + 450 JPY / 150
 
 
 def test_manual_mapping_and_remembered_layout(api, db):
     _, tok = token_for(api, db, *COSTER)
     create_product(api, tok, codes=("MAP-1",))
     headers = ["Code", "When", "Pieces", "Each", "Money", "Rate"]
-    data = workbook([["MAP-1", "2026-10-01", 3, 100, "JPY", 0.0067]], headers=headers, title="Sheet1",
+    data = workbook([["MAP-1", "2026-10-01", 3, 100, "JPY", 150]], headers=headers, title="Sheet1",
                     with_other_sheets=False)
     job = upload(api, tok, data, name="weird.xlsx").json()
     assert job["status"] == "parsed" and job["stats"]["missing_fields"]
@@ -212,7 +250,7 @@ def test_manual_mapping_and_remembered_layout(api, db):
     assert r.status_code == 200 and r.json()["status"] == "validated"
     assert commit(api, tok, job["id"]).status_code == 200
     # next file with the same header layout is mapped automatically
-    data2 = workbook([["MAP-1", "2026-10-02", 1, 100, "JPY", 0.0067]], headers=headers, title="Sheet1",
+    data2 = workbook([["MAP-1", "2026-10-02", 1, 100, "JPY", 150]], headers=headers, title="Sheet1",
                      with_other_sheets=False)
     job2 = upload(api, tok, data2, name="weird2.xlsx").json()
     assert job2["status"] == "validated" and job2["mapping"]["remembered"] is True
@@ -230,7 +268,7 @@ def test_bundle_cannot_be_purchased(api, db):
 def test_receive_into_japan_creates_fifo_lots(api, db):
     _, tok = token_for(api, db, *COSTER)
     sid = create_product(api, tok, codes=("RCV-1",))["sku_ids"][0]
-    job = upload(api, tok, workbook([cost_row("RCV-B", "RCV-1", "x", "2026-10-01", 10, 1000, "JPY", 0.0067, intl=3,
+    job = upload(api, tok, workbook([cost_row("RCV-B", "RCV-1", "x", "2026-10-01", 10, 1000, "JPY", 150, intl=450,
                                               r=2)])).json()
     commit(api, tok, job["id"])
     batch = [b for b in api.get("/api/v1/purchase-batches", headers=auth_header(tok)).json() if b["batch_no"] == "RCV-B"][0]
@@ -246,9 +284,9 @@ def test_receive_into_japan_creates_fifo_lots(api, db):
     assert api.post(url, headers={**auth_header(tok), **idem()}, json={"qty": 6}).status_code == 201
     d = api.get(f"/api/v1/skus/{sid}", headers=auth_header(tok)).json()
     assert d["jp_on_hand"] == 10
-    # landed unit cost = (10 x 1000 x 0.0067 + 3) / 10 = (67 + 3) / 10 = 7.00
+    # landed unit cost = (10 x 1000 / 150 + 450 / 150) / 10 = (66.6667 + 3.00) / 10 = 6.96667
     lots = [(l["jp"], l["unit_cost_base"]) for l in d["lots"]]
-    assert lots == [(4, "7.000000"), (6, "7.000000")], lots
+    assert lots == [(4, "6.966670"), (6, "6.966670")], lots
     assert d["lots"][0]["received_at"].startswith("2026-10-10")
     _, us = token_for(api, db, "us_live_ops")
     assert api.post(url, headers={**auth_header(us), **idem()}, json={"qty": 1}).status_code == 403

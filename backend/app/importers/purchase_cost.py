@@ -2,8 +2,10 @@
 
 Rules
   * Example / sample rows are detected and skipped automatically.
-  * Exchange rate is never guessed: a non-USD row without a rate is an error; obviously
-    inverted rates (e.g. 150 instead of 0.0067 for JPY) are rejected with the correct value.
+  * Exchange rate is written "1 USD = N <currency>" (owner: 1 USD = 150 JPY). It is never
+    guessed: a non-USD row without a rate is an error; the inverted form (0.0067) is rejected
+    with the correct value. Amounts are converted by DIVIDING by the rate.
+  * Shipping (Japan domestic + international) is in JPY; duty / other costs are in USD.
   * Cost formulas are recomputed here; numbers typed in the sheet are only cross-checked.
   * A batch ID that already exists in the ERP is rejected (history is never overwritten).
   * Importing records COST ONLY. Stock enters the Japan warehouse through an explicit
@@ -25,7 +27,8 @@ from app.services import audit
 from app.services.audit import RequestContext
 
 EXAMPLE_RE = re.compile(r"example|sample.*replace|replace before use|示例|範例|範本", re.I)
-FX_RANGES = {"JPY": (Decimal("0.003"), Decimal("0.02")), "TWD": (Decimal("0.02"), Decimal("0.06"))}
+# Plausible "units per 1 USD" ranges; anything outside is rejected rather than guessed.
+FX_RANGES = {"JPY": (Decimal("70"), Decimal("300")), "TWD": (Decimal("20"), Decimal("50"))}
 CENT = Decimal("0.01")
 TOLERANCE = Decimal("0.01")
 
@@ -45,27 +48,28 @@ def _q(d: Decimal, places: str) -> Decimal:
     return d.quantize(Decimal(places), rounding=ROUND_HALF_UP)
 
 
-def _check_fx(cur: str, fx: Decimal | None, r: RowResult) -> Decimal | None:
+def _check_fx(cur: str, quote: Decimal | None, r: RowResult) -> Decimal | None:
+    """Returns the rate as "units of `cur` per 1 USD"."""
     if cur == "USD":
-        if fx is not None and fx != 1:
-            r.errors.append(f"幣別是 USD，匯率應為 1（目前 {fx}）")
+        if quote is not None and quote != 1:
+            r.errors.append(f"幣別是 USD，匯率應為 1（目前 {quote}）")
             return None
         return Decimal(1)
-    if fx is None:
-        r.errors.append(f"{cur} 需要填寫匯率（1 {cur} = ? USD）；系統不會自行假設匯率")
+    if quote is None:
+        r.errors.append(f"{cur} 需要填寫匯率（1 USD = ? {cur}）；系統不會自行假設匯率")
         return None
-    if fx <= 0:
+    if quote <= 0:
         r.errors.append("匯率必須大於 0")
         return None
     lo, hi = FX_RANGES[cur]
-    if not lo <= fx <= hi:
-        inverse = _q(Decimal(1) / fx, "0.000001") if fx > 1 else None
+    if not lo <= quote <= hi:
+        inverse = _q(Decimal(1) / quote, "0.01") if quote < 1 else None
         if inverse is not None and lo <= inverse <= hi:
-            r.errors.append(f"匯率看起來寫反了：{fx} 像是「1 USD = {fx} {cur}」，這裡要填「1 {cur} = ? USD」，約 {inverse}")
+            r.errors.append(f"匯率看起來是「1 {cur} = {quote} USD」的寫法；這裡要填「1 USD = ? {cur}」，約 {inverse}")
         else:
-            r.errors.append(f"{cur} 匯率 {fx} 不在合理範圍（{lo}–{hi}）")
+            r.errors.append(f"{cur} 匯率 {quote} 不在合理範圍（1 USD = {lo}–{hi} {cur}）")
         return None
-    return fx
+    return quote
 
 
 def validate(db: Session, rows: list[tuple[int, dict, dict]], job_id: int) -> list[RowResult]:
@@ -125,10 +129,11 @@ def validate(db: Session, rows: list[tuple[int, dict, dict]], job_id: int) -> li
         if cur:
             nz["currency"] = cur
         if fx is not None:
-            nz["fx_rate"] = str(fx)
+            nz["fx_quote"] = str(fx)
 
-        extras = {}
-        for key, label in (("domestic_shipping_usd", "日本境內運費"), ("intl_freight_usd", "國際運費"),
+        amounts = {}
+        for key, label in (("domestic_shipping_jpy", "日本境內運費（日幣）"), ("intl_freight_jpy", "國際運費（日幣）"),
+                           ("domestic_shipping_usd", "日本境內運費（USD）"), ("intl_freight_usd", "國際運費（USD）"),
                            ("duty_other_usd", "關稅/其他費用")):
             v, err = n.decimal(g(key))
             if err:
@@ -136,19 +141,32 @@ def validate(db: Session, rows: list[tuple[int, dict, dict]], job_id: int) -> li
             elif v is not None and v < 0:
                 r.errors.append(f"{label}不能是負數")
             else:
-                extras[key] = v or Decimal(0)
-                nz[key] = str(extras[key])
+                amounts[key] = v or Decimal(0)
+        jpy_shipping = amounts.get("domestic_shipping_jpy", 0) + amounts.get("intl_freight_jpy", 0)
+        if jpy_shipping and cur and cur != "JPY":
+            r.errors.append("運費是日幣，但這列的採購幣別不是 JPY，沒有日幣匯率可以換算；請分開填寫或改用 USD 運費欄")
 
         method = n.text(g("costing_method"))
         if method and method.upper() != "FIFO":
             r.warnings.append(f"試算表寫「{method}」；系統統一使用 FIFO（先進先出）計算銷貨成本")
 
         if not r.errors:
-            purchase = _q(Decimal(qty) * unit * fx, "0.0001")
-            total = purchase + sum(extras.values())
+            purchase = _q(Decimal(qty) * unit / fx, "0.0001")
+            dom = _q(amounts["domestic_shipping_jpy"] / fx + amounts["domestic_shipping_usd"], "0.0001")
+            intl = _q(amounts["intl_freight_jpy"] / fx + amounts["intl_freight_usd"], "0.0001")
+            duty = _q(amounts["duty_other_usd"], "0.0001")
+            total = purchase + dom + intl + duty
             per_unit = _q(total / qty, "0.000001")
-            nz.update(purchase_cost_usd=str(purchase), landed_total_usd=str(_q(total, "0.0001")),
-                      landed_unit_usd=str(per_unit))
+            nz.update(
+                fx_quote=str(fx), fx_rate=str(_q(Decimal(1) / fx, "0.00000001")),
+                domestic_shipping_jpy=str(amounts["domestic_shipping_jpy"]),
+                intl_freight_jpy=str(amounts["intl_freight_jpy"]),
+                domestic_shipping_usd=str(dom), intl_freight_usd=str(intl), duty_other_usd=str(duty),
+                purchase_cost_usd=str(purchase), landed_total_usd=str(_q(total, "0.0001")), landed_unit_usd=str(per_unit),
+            )
+            if dom + intl > purchase > 0:
+                r.warnings.append(f"運費（USD {_q(dom + intl, '0.01')}）比商品採購成本（USD {_q(purchase, '0.01')}）還高，"
+                                  "請確認運費欄的幣別是否正確")
             for key, computed, label in (("purchase_cost_usd", purchase, "採購成本"),
                                          ("total_cost_usd", total, "總成本"),
                                          ("landed_unit_usd", per_unit, "每單位落地成本")):
@@ -271,8 +289,10 @@ def commit(db: Session, *, actor_id: int, job_id: int, results: list[RowResult],
             db.add(PurchaseLine(
                 batch_id=batch.id, line_no=i, sku_id=r.matched_sku_id, qty=nz["qty"],
                 unit_price_orig=Decimal(nz["unit_cost"]), currency_orig=nz["currency"],
-                fx_rate_to_base=Decimal(nz["fx_rate"]), fx_rate_date=date.fromisoformat(nz["purchase_date"]),
-                fx_source="cost sheet", purchase_cost_base=Decimal(nz["purchase_cost_usd"]),
+                fx_rate_to_base=Decimal(nz["fx_rate"]), fx_rate_quote=Decimal(nz["fx_quote"]),
+                fx_rate_date=date.fromisoformat(nz["purchase_date"]), fx_source="cost sheet",
+                purchase_cost_base=Decimal(nz["purchase_cost_usd"]),
+                domestic_shipping_jpy=Decimal(nz["domestic_shipping_jpy"]), intl_freight_jpy=Decimal(nz["intl_freight_jpy"]),
                 domestic_shipping_base=Decimal(nz["domestic_shipping_usd"]),
                 intl_freight_base=Decimal(nz["intl_freight_usd"]), duty_other_base=Decimal(nz["duty_other_usd"]),
                 landed_total_base=Decimal(nz["landed_total_usd"]), landed_unit_cost_base=Decimal(nz["landed_unit_usd"]),

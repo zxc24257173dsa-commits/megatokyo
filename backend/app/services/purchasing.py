@@ -101,12 +101,14 @@ def batch_detail(db: Session, batch_id: int, *, with_cost: bool) -> dict:
         raise AppError("not_found", "Purchase batch not found", 404)
     lines = db.execute(text("""
         SELECT pl.id, pl.line_no, pl.sku_id, s.sku_code, s.name, pl.qty, pl.unit_price_orig, pl.currency_orig,
-               pl.fx_rate_to_base, pl.purchase_cost_base, pl.domestic_shipping_base, pl.intl_freight_base,
+               pl.fx_rate_to_base, pl.fx_rate_quote, pl.purchase_cost_base, pl.domestic_shipping_jpy,
+               pl.intl_freight_jpy, pl.domestic_shipping_base, pl.intl_freight_base,
                pl.duty_other_base, pl.landed_total_base, pl.landed_unit_cost_base, pl.note,
                COALESCE((SELECT sum(original_qty) FROM inventory_lots WHERE purchase_line_id = pl.id), 0)::int AS received
           FROM purchase_lines pl JOIN skus s ON s.id = pl.sku_id
          WHERE pl.batch_id = :b ORDER BY pl.line_no"""), {"b": batch_id}).mappings().all()
-    cost_keys = ("unit_price_orig", "currency_orig", "fx_rate_to_base", "purchase_cost_base", "domestic_shipping_base",
+    cost_keys = ("unit_price_orig", "currency_orig", "fx_rate_to_base", "fx_rate_quote", "purchase_cost_base",
+                 "domestic_shipping_jpy", "intl_freight_jpy", "domestic_shipping_base",
                  "intl_freight_base", "duty_other_base", "landed_total_base", "landed_unit_cost_base")
     out_lines = []
     for l in lines:

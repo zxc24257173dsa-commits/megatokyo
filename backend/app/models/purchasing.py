@@ -34,10 +34,12 @@ class PurchaseBatch(IdMixin, TimestampMixin, Base):
 
 
 class PurchaseLine(IdMixin, CreatedMixin, Base):
-    """One SKU in a purchase batch (a cost record). Matches the owner's cost sheet:
-    unit price in the purchase currency; shipping / freight / duty already in USD.
+    """One SKU in a purchase batch (a cost record). Owner rules (2026-11-09): unit price in the
+    purchase currency, exchange rate written as "1 USD = N <currency>", shipping in JPY,
+    duty / other costs in USD.
 
-        purchase_cost_base = qty * unit_price_orig * fx_rate_to_base
+        purchase_cost_base = qty * unit_price_orig / fx_rate_quote
+        domestic_shipping_base = domestic_shipping_jpy / JPY quote (+ any USD shipping column)
         landed_total_base  = purchase_cost_base + domestic_shipping_base + intl_freight_base + duty_other_base
         landed_unit_cost_base = landed_total_base / qty
 
@@ -54,9 +56,15 @@ class PurchaseLine(IdMixin, CreatedMixin, Base):
     unit_price_orig: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
     currency_orig: Mapped[str] = mapped_column(ForeignKey("currencies.code"), nullable=False)
     fx_rate_to_base: Mapped[Decimal] = mapped_column(Numeric(18, 8), nullable=False)
+    # The rate exactly as written on the cost sheet: units of currency_orig per 1 USD (e.g. 150 for JPY).
+    # Amounts are converted by dividing by this value; fx_rate_to_base (= 1 / quote) is kept for reference.
+    fx_rate_quote: Mapped[Decimal | None] = mapped_column(Numeric(18, 6))
     fx_rate_date: Mapped[date | None] = mapped_column(Date)
     fx_source: Mapped[str | None] = mapped_column(String(60))
     purchase_cost_base: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    # Shipping as entered in JPY (owner: shipping is paid in yen). *_base columns hold the USD totals.
+    domestic_shipping_jpy: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, server_default="0")
+    intl_freight_jpy: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, server_default="0")
     domestic_shipping_base: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, server_default="0")
     intl_freight_base: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, server_default="0")
     duty_other_base: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, server_default="0")
@@ -71,6 +79,8 @@ class PurchaseLine(IdMixin, CreatedMixin, Base):
         CheckConstraint("qty > 0", name="qty_positive"),
         CheckConstraint("unit_price_orig >= 0", name="price_nonneg"),
         CheckConstraint("fx_rate_to_base > 0", name="fx_positive"),
+        CheckConstraint("fx_rate_quote IS NULL OR fx_rate_quote > 0", name="fx_quote_positive"),
+        CheckConstraint("domestic_shipping_jpy >= 0 AND intl_freight_jpy >= 0", name="jpy_shipping_nonneg"),
         CheckConstraint(
             "purchase_cost_base >= 0 AND domestic_shipping_base >= 0 AND intl_freight_base >= 0 AND duty_other_base >= 0",
             name="costs_nonneg",
