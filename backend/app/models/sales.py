@@ -28,6 +28,9 @@ class Livestream(IdMixin, TimestampMixin, Base):
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="scheduled")
     source: Mapped[str] = mapped_column(String(20), nullable=False)
+    # Whatnot show analytics: GENERATED / PENDING / NOT_ENDED / WILL_NOT_BE_CALCULATED (null = never fetched)
+    analytics_status: Mapped[str | None] = mapped_column(String(30))
+    analytics_fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (
         UniqueConstraint("platform", "external_id"),

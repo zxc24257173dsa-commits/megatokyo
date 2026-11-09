@@ -16,7 +16,8 @@ from app.services import purchasing
 from app.services.audit import RequestContext
 
 router = APIRouter(tags=["imports"])
-TYPE_PERMISSION = {"purchase_cost": "import.cost", "sku_master": "catalog.edit", "whatnot_orders": "import.sales"}
+TYPE_PERMISSION = {"purchase_cost": "import.cost", "sku_master": "catalog.edit", "whatnot_orders": "import.sales",
+                   "whatnot_financial": "import.sales"}
 
 
 def _check_type_permission(import_type: str, current: CurrentUser) -> None:

@@ -12,6 +12,7 @@ from app.api.deps import CurrentUser, get_request_context, require_permissions
 from app.core.config import get_settings
 from app.core.errors import AppError
 from app.db.session import SessionLocal, get_db
+from app.services import livestream_report
 from app.integrations.whatnot import account, client as wn_client, processing, sync, webhooks
 from app.models.catalog import ExternalSkuMapping, Sku
 from app.models.integration import SyncRun, WebhookEvent
@@ -62,6 +63,7 @@ def status(_: CurrentUser = Depends(manage), db: Session = Depends(get_db)):
         "webhook_url": s.public_base_url.rstrip("/") + "/api/v1/webhooks/whatnot",
         "webhook_events": counts,
         "open_exceptions": sync.open_exception_count(db),
+        "financial": livestream_report.financial_status(db),
         "sync_runs": [{"id": r.id, "kind": r.kind, "status": r.status, "started_at": r.started_at,
                        "finished_at": r.finished_at, "stats": r.stats, "error": r.error} for r in runs],
     }

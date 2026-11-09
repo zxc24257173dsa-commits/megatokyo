@@ -66,12 +66,39 @@ WHATNOT_ORDER_FIELDS = (
     FieldDef("sku", "SKU", False, ("sku",)),
 )
 
+WHATNOT_FINANCIAL_FIELDS = (
+    FieldDef("transaction_completed_at_utc", "交易完成時間（UTC）", True, ("transaction completed at utc",)),
+    FieldDef("order_placed_at_utc", "下單時間", False, ("order placed at utc",)),
+    FieldDef("transaction_type", "交易類型", True, ("transaction type",)),
+    FieldDef("transaction_message", "說明", False, ("transaction message",)),
+    FieldDef("order_id", "訂單編號", False, ("order id",)),
+    FieldDef("listing_title", "商品名稱", False, ("listing title",)),
+    FieldDef("buy_format", "銷售方式", False, ("buy format",)),
+    FieldDef("sale_type", "銷售類型", False, ("sale type",)),
+    FieldDef("quantity_sold", "數量", False, ("quantity sold",)),
+    FieldDef("sku", "SKU", False, ("sku",)),
+    FieldDef("livestream_id", "直播編號", False, ("livestream id",)),
+    FieldDef("shipment_id", "出貨編號", False, ("shipment id",)),
+    FieldDef("transaction_currency", "幣別", False, ("transaction currency",)),
+    FieldDef("transaction_amount", "交易金額", True, ("transaction amount",)),
+    FieldDef("buyer_paid", "買家支付", False, ("buyer paid",)),
+    FieldDef("original_item_price", "原價", False, ("original item price",)),
+    FieldDef("coupon_cost", "優惠券", False, ("coupon cost",)),
+    FieldDef("post_coupon_price", "成交價（扣優惠券後）", False, ("post coupon price",)),
+    FieldDef("seller_shipping_charge", "賣家支付運費", False, ("seller shipping charge",)),
+    FieldDef("commission_fee", "平台佣金", False, ("commission fee",)),
+    FieldDef("commission_tax", "佣金稅", False, ("commission tax",)),
+    FieldDef("processing_fee", "金流手續費", False, ("processing fee",)),
+    FieldDef("processing_fee_tax", "手續費稅", False, ("processing fee tax",)),
+    FieldDef("ledger_transaction_id", "交易編號（ledger_transaction_id）", True, ("ledger transaction id",)),
+)
+
 # Columns the template has but we deliberately never import (the ERP computes / owns these).
 IGNORED_SKU_MASTER_COLUMNS = ("current standard cost usd", "japan inventory", "us inventory", "in transit inventory",
                               "reserved inventory", "available us inventory")
 
 FIELDS = {"purchase_cost": PURCHASE_COST_FIELDS, "sku_master": SKU_MASTER_FIELDS,
-          "whatnot_orders": WHATNOT_ORDER_FIELDS}
+          "whatnot_orders": WHATNOT_ORDER_FIELDS, "whatnot_financial": WHATNOT_FINANCIAL_FIELDS}
 HEADER_SCAN_ROWS = 15
 
 

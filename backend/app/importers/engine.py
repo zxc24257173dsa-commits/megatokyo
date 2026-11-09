@@ -15,13 +15,14 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
-from app.importers import mapping, normalize, purchase_cost, reader, sku_master, whatnot_orders
+from app.importers import mapping, normalize, purchase_cost, reader, sku_master, whatnot_financial, whatnot_orders
 from app.models.imports import ImportJob, ImportMappingTemplate, ImportRow
 from app.services import audit, storage
 from app.services.audit import RequestContext
 
 MAX_FILE_BYTES = 10 * 1024 * 1024
-HANDLERS = {"purchase_cost": purchase_cost, "sku_master": sku_master, "whatnot_orders": whatnot_orders}
+HANDLERS = {"purchase_cost": purchase_cost, "sku_master": sku_master, "whatnot_orders": whatnot_orders,
+            "whatnot_financial": whatnot_financial}
 
 
 def _mask_private(import_type: str, rows: list[list]) -> list[list]:

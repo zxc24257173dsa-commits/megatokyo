@@ -64,6 +64,7 @@ class WhatnotClient:
             timeout=httpx.Timeout(20.0, connect=10.0), transport=transport,
         )
         self._sleep = sleep
+        self.transport = transport  # also used for report downloads (tests); None = real network
 
     def close(self) -> None:
         self._http.close()

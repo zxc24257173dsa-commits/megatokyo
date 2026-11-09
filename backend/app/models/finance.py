@@ -10,11 +10,12 @@ from datetime import date, datetime
 from decimal import Decimal
 
 from sqlalchemy import (
-    CheckConstraint, Date, DateTime, ForeignKey, Index, Numeric, String, Text, UniqueConstraint, func,
+    CheckConstraint, Date, DateTime, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint, func,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.db.base import Base, CreatedMixin, IdMixin
+from app.db.base import Base, CreatedMixin, IdMixin, TimestampMixin
 from app.models._util import check_in
 
 INCOME_TYPES = ("revenue", "shipping_income", "other_income")
@@ -22,7 +23,8 @@ EXPENSE_TYPES = (
     "cogs", "sales_discount", "platform_fee", "payment_processing_fee", "shipping_cost", "refund",
     "operating_expense", "other_expense",
 )
-SIGNED_TYPES = ("cogs_adjustment",)  # late landed-cost corrections can go either way
+# Signed: late landed-cost corrections; refunds won back on appeal / carrier adjustments (either direction)
+SIGNED_TYPES = ("cogs_adjustment", "refund_adjustment", "shipping_adjustment")
 ENTRY_TYPES = INCOME_TYPES + EXPENSE_TYPES + SIGNED_TYPES
 SOURCE_TYPES = ("api", "webhook", "csv", "manual", "system")
 
@@ -31,7 +33,7 @@ def _sign_rule() -> str:
     inc = ", ".join(f"'{t}'" for t in INCOME_TYPES)
     exp = ", ".join(f"'{t}'" for t in EXPENSE_TYPES)
     return (
-        "reversal_of_id IS NOT NULL OR entry_type = 'cogs_adjustment'"
+        "reversal_of_id IS NOT NULL OR entry_type IN ('cogs_adjustment', 'refund_adjustment', 'shipping_adjustment')"
         f" OR (entry_type IN ({inc}) AND amount_base >= 0)"
         f" OR (entry_type IN ({exp}) AND amount_base <= 0)"
     )
@@ -129,4 +131,85 @@ class AccountingPeriod(Base):
     __table_args__ = (
         check_in("status", ("open", "closed"), "status_valid"),
         CheckConstraint("period ~ '^[0-9]{4}-(0[1-9]|1[0-2])$'", name="period_format"),
+    )
+
+
+REPORT_STATUSES = ("pending", "in_progress", "completed", "failed", "cancelled")
+
+
+class PlatformReportRun(IdMixin, TimestampMixin, Base):
+    """A Whatnot report generation run (POST /reports). Generation is asynchronous: the sync
+    requests it, polls, and processes the CSV once `completed` (possibly in a later sync)."""
+
+    __tablename__ = "platform_report_runs"
+
+    platform: Mapped[str] = mapped_column(String(30), nullable=False, server_default="whatnot")
+    external_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    report_type: Mapped[str] = mapped_column(String(60), nullable=False)
+    parameters: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    stats: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    error: Mapped[str | None] = mapped_column(Text)
+
+    __table_args__ = (
+        UniqueConstraint("platform", "external_id"),
+        check_in("status", REPORT_STATUSES, "status_valid"),
+    )
+
+
+PT_STATUSES = ("booked", "order_not_in_erp", "needs_review")
+
+
+class PlatformTransaction(IdMixin, TimestampMixin, Base):
+    """One row of Whatnot's seller financial report (one ledger transaction): the real commission,
+    processing fee, seller-paid shipping, refunds, tips and carrier adjustments.
+
+    Amount columns never change once stored (trigger); a later report with different numbers for
+    the same ledger transaction is flagged, not applied. Buyer name / state / country are not stored.
+    The booked financial_entries reference it via idempotency keys `whatnot:ledger:<external_id>:*`.
+    """
+
+    __tablename__ = "platform_transactions"
+
+    platform: Mapped[str] = mapped_column(String(30), nullable=False, server_default="whatnot")
+    external_id: Mapped[str] = mapped_column(String(64), nullable=False)  # ledger_transaction_id
+    transaction_type: Mapped[str] = mapped_column(String(60), nullable=False)
+    completed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    order_placed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    external_order_id: Mapped[str | None] = mapped_column(String(128), index=True)
+    sales_order_id: Mapped[int | None] = mapped_column(ForeignKey("sales_orders.id"), index=True)
+    external_livestream_id: Mapped[str | None] = mapped_column(String(128))
+    livestream_id: Mapped[int | None] = mapped_column(ForeignKey("livestreams.id"), index=True)
+    external_shipment_id: Mapped[str | None] = mapped_column(String(128))
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)  # signed net effect on the balance
+    buyer_paid: Mapped[Decimal | None] = mapped_column(Numeric(18, 4))
+    original_item_price: Mapped[Decimal | None] = mapped_column(Numeric(18, 4))
+    coupon_cost: Mapped[Decimal | None] = mapped_column(Numeric(18, 4))
+    post_coupon_price: Mapped[Decimal | None] = mapped_column(Numeric(18, 4))
+    seller_shipping_charge: Mapped[Decimal | None] = mapped_column(Numeric(18, 4))
+    commission_fee: Mapped[Decimal | None] = mapped_column(Numeric(18, 4))
+    commission_tax: Mapped[Decimal | None] = mapped_column(Numeric(18, 4))
+    processing_fee: Mapped[Decimal | None] = mapped_column(Numeric(18, 4))
+    processing_fee_tax: Mapped[Decimal | None] = mapped_column(Numeric(18, 4))
+    quantity_sold: Mapped[int | None] = mapped_column(Integer)
+    buy_format: Mapped[str | None] = mapped_column(String(40))
+    sale_type: Mapped[str | None] = mapped_column(String(40))
+    listing_title: Mapped[str | None] = mapped_column(String(500))
+    sku_text: Mapped[str | None] = mapped_column(String(128))
+    message: Mapped[str | None] = mapped_column(Text)
+    source: Mapped[str] = mapped_column(String(20), nullable=False)
+    report_run_id: Mapped[int | None] = mapped_column(ForeignKey("platform_report_runs.id"))
+    import_job_id: Mapped[int | None] = mapped_column(ForeignKey("import_jobs.id"))
+    status: Mapped[str] = mapped_column(String(30), nullable=False)
+    detail: Mapped[str | None] = mapped_column(Text)
+    upstream_changed: Mapped[bool] = mapped_column(nullable=False, server_default="false")
+    booked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        UniqueConstraint("platform", "external_id"),
+        check_in("status", PT_STATUSES, "status_valid"),
+        check_in("source", ("api", "csv"), "source_valid"),
+        Index("ix_platform_transactions_status", "status", postgresql_where="status <> 'booked'"),
     )

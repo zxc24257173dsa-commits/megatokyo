@@ -74,6 +74,7 @@ class Settings(BaseSettings):
     whatnot_webhook_secret: SecretStr | None = None
     whatnot_requests_per_second: float = 8.0  # Whatnot allows 10/s per seller per app
     whatnot_sync_days: int = 3  # how far back each order/shipment sync looks
+    whatnot_financial_days: int = 14  # financial report window per sync (fees post when an order ships)
 
     # ---- Business flow ----
     # Owner (2026-11-09): goods are shipped from Japan straight to the US; no Japan warehouse.
