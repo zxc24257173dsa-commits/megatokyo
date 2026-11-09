@@ -4,13 +4,15 @@
 
 - 設計文件：[`docs/00-architecture-and-database-design.md`](docs/00-architecture-and-database-design.md)
 - 已確認的業務決策：[`docs/01-decisions.md`](docs/01-decisions.md)
+- 登入與權限：[`docs/02-auth-and-permissions.md`](docs/02-auth-and-permissions.md)
 
 ## 目前進度
 
 | Phase | 狀態 |
 |---|---|
 | 1 系統架構與資料庫 | ✅ 完成（57 張資料表、資料庫層完整性規則、41 項自動測試） |
-| 2 登入、權限與多地同步 | 待開始 |
+| 2 登入、權限與多地同步 | ✅ 完成（Argon2id、JWT＋refresh 輪替、TOTP 雙因素、鎖定、RBAC、稽核；共 72 項測試） |
+| 3 商品與多倉庫庫存 | 待開始 |
 
 ## 本機開發
 
@@ -35,6 +37,7 @@ python3 -m venv .venv && . .venv/bin/activate
 pip install -e ".[dev]"
 cp .env.example .env          # 依需要修改連線字串
 alembic upgrade head          # 建立/升級資料庫
+python -m app.cli create-admin --email you@example.com --name "Owner"   # 第一位管理員
 uvicorn app.main:app --reload
 ```
 

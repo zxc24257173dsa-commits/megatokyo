@@ -10,6 +10,10 @@ dependencies = [
     "psycopg[binary]==3.2.*",
     "alembic==1.14.*",
     "pydantic-settings==2.6.*",
+    "argon2-cffi==23.1.*",
+    "pyjwt==2.10.*",
+    "pyotp==2.9.*",
+    "cryptography==44.*",
 ]
 
 [project.optional-dependencies]

@@ -2,7 +2,8 @@
 from datetime import datetime
 
 from sqlalchemy import (
-    BigInteger, Boolean, Column, DateTime, ForeignKey, Index, LargeBinary, String, Table, Text, func,
+    BigInteger, Boolean, CheckConstraint, Column, DateTime, ForeignKey, Index, Integer, LargeBinary, String, Table,
+    Text, func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
@@ -21,9 +22,23 @@ class User(IdMixin, TimestampMixin, Base):
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
     mfa_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     mfa_secret_enc: Mapped[bytes | None] = mapped_column(LargeBinary)
+    mfa_pending_secret_enc: Mapped[bytes | None] = mapped_column(LargeBinary)  # during enrolment
+    mfa_last_used_step: Mapped[int | None] = mapped_column(BigInteger)  # TOTP replay protection
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Lockout after repeated failures (password or MFA).
+    failed_login_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Admin-set passwords must be changed at first login.
+    must_change_password: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    password_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Bumped on password change / deactivation / forced logout: invalidates all issued access tokens.
+    token_version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
 
-    __table_args__ = (Index("uq_users_email_lower", func.lower(email), unique=True),)
+    __table_args__ = (
+        Index("uq_users_email_lower", func.lower(email), unique=True),
+        CheckConstraint("failed_login_count >= 0", name="failed_nonneg"),
+        CheckConstraint("NOT mfa_enabled OR mfa_secret_enc IS NOT NULL", name="mfa_has_secret"),
+    )
 
 
 class Role(IdMixin, CreatedMixin, Base):
@@ -63,6 +78,8 @@ class RefreshToken(IdMixin, CreatedMixin, Base):
     token_hash: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    family_id: Mapped[str] = mapped_column(String(32), nullable=False, index=True)  # one per login session
+    revoked_reason: Mapped[str | None] = mapped_column(String(30))
     replaced_by_id: Mapped[int | None] = mapped_column(ForeignKey("refresh_tokens.id"))
     ip: Mapped[str | None] = mapped_column(String(64))
     user_agent: Mapped[str | None] = mapped_column(Text)

@@ -13,6 +13,7 @@ TEST_DB_URL = os.environ.get(
 os.environ["ERP_DATABASE_URL"] = TEST_DB_URL
 os.environ["ERP_ENV"] = "test"
 os.environ["ERP_LOG_JSON"] = "false"
+os.environ["ERP_COOKIE_SECURE"] = "false"  # TestClient talks plain http
 
 from alembic import command  # noqa: E402
 from alembic.config import Config  # noqa: E402
@@ -93,3 +94,49 @@ def move(db: Session, sku_id: int, lot_id: int, mtype: str, frm: str, to: str, q
 def position(db: Session, sku_id: int) -> dict:
     row = db.execute(text("SELECT * FROM v_inventory_position WHERE sku_id = :s"), {"s": sku_id}).mappings().one()
     return dict(row)
+
+
+# ---------- API client bound to the per-test transaction ----------
+
+@pytest.fixture
+def api(db):
+    """TestClient whose requests use the test's session; endpoint commits become savepoints,
+    so everything is rolled back after the test."""
+    from fastapi.testclient import TestClient
+
+    from app.db.session import get_db
+    from app.main import app
+
+    app.dependency_overrides[get_db] = lambda: db
+    try:
+        yield TestClient(app)
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+
+STRONG_PW = "Correct-Horse-42!"
+
+
+def make_user(db, roles=("read_only",), *, email=None, password=STRONG_PW, must_change=False):
+    from app.services import users
+    u = users.create_user(db, actor_id=None, email=email or f"{uid('u')}@example.com", display_name="Test User",
+                          password=password, roles=list(roles), must_change_password=must_change)
+    db.commit()
+    return u
+
+
+def login(api, email, password=STRONG_PW):
+    return api.post("/api/v1/auth/login", json={"email": email, "password": password})
+
+
+def auth_header(token: str) -> dict:
+    return {"Authorization": f"Bearer {token}"}
+
+
+def enroll_mfa(api, token):
+    """Returns the TOTP secret after enabling MFA for the logged-in user."""
+    import pyotp
+    secret = api.post("/api/v1/auth/mfa/setup", headers=auth_header(token)).json()["secret"]
+    r = api.post("/api/v1/auth/mfa/enable", json={"code": pyotp.TOTP(secret).now()}, headers=auth_header(token))
+    assert r.status_code == 204, r.text
+    return secret

@@ -7,9 +7,11 @@ Internal details (SQL, stack traces) are logged, never returned to the client.
 import logging
 
 from fastapi import FastAPI, Request, status
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import DBAPIError, IntegrityError
+from sqlalchemy.orm.exc import StaleDataError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.core.logging import request_id_var
@@ -45,7 +47,15 @@ def register_exception_handlers(app: FastAPI) -> None:
     async def _validation_error(_: Request, exc: RequestValidationError):
         return JSONResponse(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            content=_body("validation_error", "Request validation failed", {"errors": exc.errors()}),
+            content=_body("validation_error", "Request validation failed", {"errors": jsonable_encoder(exc.errors())}),
+        )
+
+    @app.exception_handler(StaleDataError)
+    async def _stale(_: Request, exc: StaleDataError):
+        # Optimistic locking: someone in another office saved this record first.
+        return JSONResponse(
+            status_code=status.HTTP_409_CONFLICT,
+            content=_body("modified_by_someone_else", "This record was changed by another user; reload and retry"),
         )
 
     @app.exception_handler(IntegrityError)

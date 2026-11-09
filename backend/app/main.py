@@ -5,7 +5,7 @@ import uuid
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.v1 import health
+from app.api.v1 import auth, health, users
 from app.core.config import get_settings
 from app.core.errors import register_exception_handlers
 from app.core.logging import configure_logging, request_id_var
@@ -36,6 +36,11 @@ async def request_context(request: Request, call_next):
     finally:
         duration_ms = round((time.perf_counter() - start) * 1000, 1)
     response.headers["X-Request-ID"] = rid
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    if request.url.path.startswith("/api/v1/auth"):
+        response.headers.setdefault("Cache-Control", "no-store")
     log.info(
         "request",
         extra={"extra_fields": {
@@ -50,3 +55,5 @@ async def request_context(request: Request, call_next):
 register_exception_handlers(app)
 app.include_router(health.router)
 app.include_router(health.router, prefix="/api/v1")
+app.include_router(auth.router, prefix="/api/v1")
+app.include_router(users.router, prefix="/api/v1")
