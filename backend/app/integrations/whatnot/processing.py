@@ -216,6 +216,8 @@ def _reserve(db: Session, line: SalesOrderLine) -> None:
                                                               InventoryReservation.sku_id == sku_id))
         if exists is None:
             db.add(InventoryReservation(order_line_id=line.id, sku_id=sku_id, location_id=us.id, qty=qty))
+        elif exists.status != "reserved":  # mapped back to a SKU used before: reserve again
+            exists.status, exists.qty, exists.released_reason = "reserved", qty, None
     db.flush()
     line.stock_state = "reserved"
     short = db.execute(text("""SELECT s.sku_code, v.us_available FROM inventory_reservations r
@@ -234,7 +236,7 @@ def _ship(db: Session, so: SalesOrder, line: SalesOrderLine, shipped_at: datetim
             for r in reservations:
                 allocs = inventory.consume_fifo(
                     db, sku_id=r.sku_id, from_code="US_MAIN", to_code="CUSTOMER", movement_type="sale", qty=r.qty,
-                    key_prefix=f"whatnot:line:{line.id}:sale:{r.sku_id}", ref_type="sales_order_line",
+                    key_prefix=_sale_prefix(line, r.sku_id), ref_type="sales_order_line",
                     ref_id=line.id, note=f"Whatnot order {so.external_order_id}")
                 for a in allocs:
                     total = q4(a.unit_cost_base * a.qty)
@@ -263,6 +265,11 @@ def _ship(db: Session, so: SalesOrder, line: SalesOrderLine, shipped_at: datetim
     line.fulfillment_status = "shipped"
     if line.exception_code in ("insufficient_stock", "oversold"):
         _set_exception(line, None)
+
+
+def _sale_prefix(line: SalesOrderLine, sku_id: int) -> str:
+    gen = line.stock_generation
+    return f"whatnot:line:{line.id}:sale:{sku_id}" if gen == 0 else f"whatnot:line:{line.id}:g{gen}:sale:{sku_id}"
 
 
 def _is_shipped(db: Session, so: SalesOrder, line: SalesOrderLine) -> datetime | None:
@@ -423,3 +430,82 @@ def process_shipment(db: Session, shipment: dict, items: list[dict], *, source: 
             so = db.get(SalesOrder, line.order_id)
             apply_line(db, so, line, source)
     return sh
+
+
+# ---------- correcting a wrong SKU ----------
+
+def undo_stock(db: Session, line: SalesOrderLine, reason: str) -> None:
+    """Take back everything stock-related booked for this line (revenue stays: it was real).
+    The ledgers are append-only, so shipped units come back with return movements and the
+    cost of goods is reversed with reversal entries."""
+    from app.models.inventory import InventoryMovement
+    now = datetime.now(UTC)
+    for r in db.scalars(select(InventoryReservation).where(InventoryReservation.order_line_id == line.id,
+                                                           InventoryReservation.status == "reserved")):
+        r.status, r.released_reason = "released", reason
+    sales = db.scalars(select(InventoryMovement).where(InventoryMovement.ref_type == "sales_order_line",
+                                                       InventoryMovement.ref_id == line.id,
+                                                       InventoryMovement.movement_type == "sale"))
+    for m in sales:
+        key = f"whatnot:line:{line.id}:return:{m.id}"
+        if not db.scalar(select(InventoryMovement.id).where(InventoryMovement.idempotency_key == key)):
+            inventory.post_movement(db, sku_id=m.sku_id, lot_id=m.lot_id, movement_type="customer_return",
+                                    from_code="CUSTOMER", to_code="US_MAIN", qty=m.qty, key=key,
+                                    ref_type="sales_order_line", ref_id=line.id, note=f"SKU corrected: {reason}")
+    for e in db.scalars(select(FinancialEntry).where(FinancialEntry.order_line_id == line.id,
+                                                     FinancialEntry.entry_type == "cogs",
+                                                     FinancialEntry.reversal_of_id.is_(None))):
+        _reverse(db, e.idempotency_key, now, "manual")
+    line.stock_generation += 1
+    line.stock_state, line.shipped_at, line.fulfillment_status = "none", None, "unfulfilled"
+    _set_exception(line, None)
+    db.flush()
+
+
+def _group(db: Session, line: SalesOrderLine) -> list[SalesOrderLine]:
+    """Lines of the same Whatnot product (id or title without #N) currently on the same SKU."""
+    key = title_key(line.title_snapshot)
+    same_sku = SalesOrderLine.sku_id.is_(None) if line.sku_id is None else SalesOrderLine.sku_id == line.sku_id
+    out = []
+    for other in db.scalars(select(SalesOrderLine).where(same_sku).order_by(SalesOrderLine.id)):
+        same_product = line.external_product_id is not None and other.external_product_id == line.external_product_id \
+            and other.external_variant_id == line.external_variant_id
+        if other.id == line.id or same_product or (key and title_key(other.title_snapshot) == key):
+            out.append(other)
+    return out
+
+
+def remap_group(db: Session, line: SalesOrderLine, new_sku_id: int | None, actor_id: int | None) -> int:
+    """Map (or correct, or clear) the SKU of a Whatnot product: this line, every other line of the
+    same product currently on the same SKU, and the mapping rules for future orders."""
+    old_sku_id = line.sku_id
+    lines = _group(db, line)
+    # mapping rules: drop the ones pointing at the old SKU for this product, add the new one
+    rule_filters = []
+    if line.external_product_id:
+        rule_filters.append((PLATFORM, line.external_product_id, line.external_variant_id))
+    if key := title_key(line.title_snapshot):
+        rule_filters.append((TITLE_PLATFORM, key, None))
+    for platform, pid, vid in rule_filters:
+        q = select(ExternalSkuMapping).where(ExternalSkuMapping.platform == platform,
+                                             ExternalSkuMapping.external_product_id == pid,
+                                             ExternalSkuMapping.external_variant_id.is_(None) if vid is None
+                                             else ExternalSkuMapping.external_variant_id == vid)
+        for m in db.scalars(q):
+            db.delete(m)
+    db.flush()
+    if new_sku_id is not None:
+        if line.external_product_id:
+            db.add(ExternalSkuMapping(platform=PLATFORM, external_product_id=line.external_product_id,
+                                      external_variant_id=line.external_variant_id, external_sku=line.purchased_sku,
+                                      sku_id=new_sku_id, created_by=actor_id))
+        save_title_rule(db, line.title_snapshot, new_sku_id, actor_id)
+    for l in lines:
+        if old_sku_id is not None:
+            undo_stock(db, l, f"SKU changed from {old_sku_id} to {new_sku_id}")
+        l.sku_id = new_sku_id
+        l.mapping_status = "mapped" if new_sku_id else "unmapped"
+        db.flush()
+        apply_line(db, db.get(SalesOrder, l.order_id), l, "manual")
+    db.flush()
+    return len(lines)

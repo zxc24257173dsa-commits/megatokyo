@@ -105,6 +105,8 @@ class SalesOrderLine(IdMixin, TimestampMixin, Base):
     external_shipment_id: Mapped[str | None] = mapped_column(String(128), index=True)
     # none -> reserved -> shipped ; released (cancelled before shipping)
     stock_state: Mapped[str] = mapped_column(String(20), nullable=False, server_default="none")
+    # Bumped when the line's SKU is corrected: new reservations / sales use fresh idempotency keys.
+    stock_generation: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     exception_code: Mapped[str | None] = mapped_column(String(40))
     exception_detail: Mapped[str | None] = mapped_column(Text)
 

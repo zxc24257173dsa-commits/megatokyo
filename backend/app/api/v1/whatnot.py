@@ -196,7 +196,8 @@ def get_order(order_id: int, _: CurrentUser = Depends(orders_view), db: Session 
                x.stock_state, x.exception_code, x.exception_detail, x.external_shipment_id, x.shipped_at,
                x.sku_id, s.sku_code, s.name AS sku_name, s.is_bundle, sh.status AS shipment_status,
                sh.tracking_code,
-               (SELECT sum(c.total_cost_base) FROM cogs_allocations c WHERE c.order_line_id = x.id) AS cogs
+               (SELECT -sum(e.amount_base) FROM financial_entries e
+                 WHERE e.order_line_id = x.id AND e.entry_type IN ('cogs', 'cogs_adjustment')) AS cogs
           FROM sales_order_lines x LEFT JOIN skus s ON s.id = x.sku_id
           LEFT JOIN sales_shipments sh ON sh.external_id = x.external_shipment_id
          WHERE x.order_id = :o ORDER BY x.id"""), {"o": so.id}).mappings().all()
@@ -214,45 +215,47 @@ class MapIn(BaseModel):
     sku_id: int
 
 
-@router.post("/orders/lines/{line_id}/map")
-def map_line(line_id: int, body: MapIn, current: CurrentUser = Depends(require_permissions("catalog.edit")),
-             db: Session = Depends(get_db), ctx: RequestContext = Depends(get_request_context)):
-    """Link a Whatnot product to an ERP SKU. Applies to this line and every future order of it."""
+def _remap(db: Session, line_id: int, sku_id: int | None, current: CurrentUser, ctx: RequestContext, *, action: str):
     line = db.scalar(select(SalesOrderLine).where(SalesOrderLine.id == line_id).with_for_update())
     if line is None:
         raise AppError("not_found", "Order line not found", 404)
-    if line.sku_id is not None:
-        raise AppError("already_mapped", "This line is already linked to a SKU", 409)
-    sku = db.get(Sku, body.sku_id)
-    if sku is None:
-        raise AppError("not_found", "SKU not found", 404)
-    if line.external_product_id:
-        exists = db.scalar(select(ExternalSkuMapping).where(
-            ExternalSkuMapping.platform == "whatnot", ExternalSkuMapping.external_product_id == line.external_product_id,
-            ExternalSkuMapping.external_variant_id.is_(None) if line.external_variant_id is None
-            else ExternalSkuMapping.external_variant_id == line.external_variant_id))
-        if exists is None:
-            db.add(ExternalSkuMapping(platform="whatnot", external_product_id=line.external_product_id,
-                                      external_variant_id=line.external_variant_id, external_sku=line.purchased_sku,
-                                      sku_id=sku.id, created_by=current.id))
-    line.sku_id, line.mapping_status = sku.id, "mapped"
-    db.flush()
-    audit.record(db, action="order_line.mapped", entity_type="sales_order_line", entity_id=line.id, actor_id=current.id,
-                 after={"sku_code": sku.sku_code, "whatnot_product_id": line.external_product_id}, ctx=ctx)
-    processing.save_title_rule(db, line.title_snapshot, sku.id, current.id)
-    so = db.get(SalesOrder, line.order_id)
-    processing.reprocess_order(db, so, "manual")
-    # every other unmapped line of the same Whatnot product, or with the same title (any #N), too
-    key = processing.title_key(line.title_snapshot)
-    for other in db.scalars(select(SalesOrderLine).where(SalesOrderLine.sku_id.is_(None))):
-        same_product = line.external_product_id and other.external_product_id == line.external_product_id \
-            and other.external_variant_id == line.external_variant_id
-        if same_product or (key and processing.title_key(other.title_snapshot) == key):
-            other.sku_id, other.mapping_status = sku.id, "mapped"
-            db.flush()
-            processing.reprocess_order(db, db.get(SalesOrder, other.order_id), "manual")
+    sku = None
+    if sku_id is not None:
+        sku = db.get(Sku, sku_id)
+        if sku is None:
+            raise AppError("not_found", "SKU not found", 404)
+    before = line.sku_id
+    n = processing.remap_group(db, line, sku_id, current.id)
+    audit.record(db, action=action, entity_type="sales_order_line", entity_id=line.id, actor_id=current.id,
+                 before={"sku_id": before}, after={"sku_code": sku.sku_code if sku else None, "lines": n,
+                                                   "whatnot_product_id": line.external_product_id,
+                                                   "title": processing.clean_title(line.title_snapshot)}, ctx=ctx)
     db.commit()
-    return get_order(so.id, current, db)
+    return get_order(line.order_id, current, db)
+
+
+@router.post("/orders/lines/{line_id}/map")
+def map_line(line_id: int, body: MapIn, current: CurrentUser = Depends(require_permissions("catalog.edit")),
+             db: Session = Depends(get_db), ctx: RequestContext = Depends(get_request_context)):
+    """Link a Whatnot product to an ERP SKU: this line, all other lines of that product (any #N
+    auction) and every future order."""
+    line = db.get(SalesOrderLine, line_id)
+    if line is not None and line.sku_id is not None:
+        raise AppError("already_mapped", "This line is already linked to a SKU; use 'change SKU'", 409)
+    return _remap(db, line_id, body.sku_id, current, ctx, action="order_line.mapped")
+
+
+class RemapIn(BaseModel):
+    sku_id: int | None  # null = remove the link
+
+
+@router.post("/orders/lines/{line_id}/remap")
+def remap_line(line_id: int, body: RemapIn,
+               current: CurrentUser = Depends(require_permissions("catalog.edit", "inventory.adjust_us")),
+               db: Session = Depends(get_db), ctx: RequestContext = Depends(get_request_context)):
+    """Correct a wrong SKU. Shipped units go back to US stock and their cost of goods is reversed
+    (append-only ledgers: return movements + reversal entries), then the correct SKU is applied."""
+    return _remap(db, line_id, body.sku_id, current, ctx, action="order_line.remapped")
 
 
 @router.post("/orders/{order_id}/reprocess")

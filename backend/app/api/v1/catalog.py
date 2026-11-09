@@ -1,5 +1,6 @@
 """/api/v1 catalog: categories, products, SKUs, bundles, images, signed file downloads."""
 from fastapi import APIRouter, Depends, File, Query, Response, UploadFile
+from pydantic import BaseModel, Field
 from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -9,11 +10,12 @@ from app.core.errors import AppError
 from app.db.session import get_db
 from app.models.catalog import Category, Product, Sku, SkuImage, sku_bundle_components
 from app.schemas.catalog import (
-    BundleCreate, CategoryIn, CategoryOut, ComponentsUpdate, ImageOut, LotOut, ProductCreate, ProductOut,
+    BundleCreate, CategoryIn, CategoryOut, Component, ComponentsUpdate, ImageOut, LotOut, ProductCreate, ProductOut,
     ProductUpdate, SkuCreate, SkuDetail, SkuListItem, SkuUpdate,
 )
 from app.services import catalog as svc
 from app.services import inventory_queries as q
+from app.services import boxes as boxes_svc
 from app.services import storage
 from app.services.audit import RequestContext
 
@@ -97,6 +99,7 @@ def _detail(db: Session, sku_id: int, current: CurrentUser) -> SkuDetail:
         **row, attributes=sku.attributes, barcode=sku.barcode, default_purchase_currency=sku.default_purchase_currency,
         brand=product.brand, description=product.description,
         components=svc.bundle_components(db, sku_id) if sku.is_bundle else [],
+        box_contents=[] if sku.is_bundle else boxes_svc.contents(db, sku_id),
         used_in_bundles=[{"sku_id": u[0], "sku_code": u[1], "name": u[2], "qty": u[3]} for u in used_in],
         images=[ImageOut(id=i.id, url=storage.signed_url(i.storage_key), is_primary=i.is_primary,
                          content_type=i.content_type, size_bytes=i.size_bytes) for i in images],
@@ -128,6 +131,21 @@ def create_bundle(body: BundleCreate, current: CurrentUser = Depends(edit), db: 
                             components=[c.model_dump() for c in body.components], ctx=ctx)
     db.commit()
     return _detail(db, sku.id, current)
+
+
+class BoxContentsIn(BaseModel):
+    version: int
+    contents: list[Component] = Field(max_length=100)
+
+
+@router.put("/skus/{sku_id}/box-contents", response_model=SkuDetail)
+def set_box_contents(sku_id: int, body: BoxContentsIn, current: CurrentUser = Depends(edit),
+                     db: Session = Depends(get_db), ctx: RequestContext = Depends(get_request_context)):
+    from app.services import boxes
+    boxes.set_contents(db, actor_id=current.id, box_sku_id=sku_id, version=body.version,
+                       items=[c.model_dump() for c in body.contents], ctx=ctx)
+    db.commit()
+    return _detail(db, sku_id, current)
 
 
 @router.put("/skus/{sku_id}/components", response_model=SkuDetail)

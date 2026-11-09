@@ -13,12 +13,13 @@ from decimal import Decimal
 from sqlalchemy import (
     CheckConstraint, DateTime, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint, func,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, CreatedMixin, IdMixin, TimestampMixin
 from app.models._util import check_in
 
-LOT_SOURCES = ("purchase", "opening_balance", "return", "adjustment")
+LOT_SOURCES = ("purchase", "opening_balance", "return", "adjustment", "box_open")
 
 MOVEMENT_TYPES = (
     "purchase_receipt",   # SUPPLIER   -> JP_MAIN
@@ -31,6 +32,8 @@ MOVEMENT_TYPES = (
     "adjustment_in",      # ADJUSTMENT -> physical (stock count gain)
     "adjustment_out",     # physical   -> ADJUSTMENT (stock count loss)
     "damage",             # physical   -> LOSS
+    "box_open",           # physical   -> ADJUSTMENT (sealed boxes opened)
+    "box_content",        # ADJUSTMENT -> physical (what came out of them)
 )
 
 
@@ -57,6 +60,8 @@ class InventoryLot(IdMixin, CreatedMixin, Base):
     received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     original_qty: Mapped[int] = mapped_column(Integer, nullable=False)
     original_unit_cost_base: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
+    # For lots created by opening a box: the box lot the contents came from (cost traceability).
+    parent_lot_id: Mapped[int | None] = mapped_column(ForeignKey("inventory_lots.id"))
     base_currency: Mapped[str] = mapped_column(ForeignKey("currencies.code"), nullable=False, server_default="USD")
 
     __table_args__ = (
@@ -184,3 +189,21 @@ class StockCountLine(IdMixin, Base):
         UniqueConstraint("stock_count_id", "sku_id"),
         CheckConstraint("counted_qty IS NULL OR counted_qty >= 0", name="counted_nonneg"),
     )
+
+
+class BoxOpening(IdMixin, CreatedMixin, Base):
+    """Opening sealed boxes into their contents. Owner rule (2026-11-09): the box cost is split
+    EQUALLY over every unit inside (8 promos + 2 packs + 1 sleeve -> each 1/11 of the box)."""
+
+    __tablename__ = "box_openings"
+
+    box_sku_id: Mapped[int] = mapped_column(ForeignKey("skus.id"), nullable=False, index=True)
+    location_id: Mapped[int] = mapped_column(ForeignKey("locations.id"), nullable=False)
+    qty: Mapped[int] = mapped_column(Integer, nullable=False)
+    units_per_box: Mapped[int] = mapped_column(Integer, nullable=False)
+    contents: Mapped[list] = mapped_column(JSONB, nullable=False)  # snapshot of the recipe used
+    idempotency_key: Mapped[str] = mapped_column(String(200), nullable=False, unique=True)
+    note: Mapped[str | None] = mapped_column(Text)
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+
+    __table_args__ = (CheckConstraint("qty > 0 AND units_per_box > 0", name="qty_positive"),)

@@ -58,6 +58,7 @@ export interface SkuDetail extends SkuRow {
   brand: string | null;
   description: string | null;
   components: { sku_id: number; sku_code: string; qty: number }[];
+  box_contents: { sku_id: number; sku_code: string; name: string; qty: number }[];
   used_in_bundles: { sku_id: number; sku_code: string; name: string; qty: number }[];
   images: { id: number; url: string; is_primary: boolean }[];
   lots: Lot[];
@@ -139,6 +140,8 @@ export const MOVEMENT_LABEL: Record<string, string> = {
   adjustment_in: "調整增加",
   adjustment_out: "調整減少",
   damage: "損壞報廢",
+  box_open: "拆盒（盒子扣除）",
+  box_content: "拆盒（取出內容）",
 };
 
 export const ROLE_LABEL: Record<string, string> = {

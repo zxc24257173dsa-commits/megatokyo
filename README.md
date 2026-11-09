@@ -7,6 +7,7 @@
 - 登入與權限：[`docs/02-auth-and-permissions.md`](docs/02-auth-and-permissions.md)
 - 商品與庫存：[`docs/03-catalog-and-inventory.md`](docs/03-catalog-and-inventory.md)
 - 成本匯入：[`docs/04-cost-import.md`](docs/04-cost-import.md)
+- Whatnot 訂單同步、拆盒：[`docs/05-whatnot-orders.md`](docs/05-whatnot-orders.md)
 
 ## 目前進度
 
@@ -16,7 +17,8 @@
 | 2 登入、權限與多地同步 | ✅ 完成（**Google 帳號一鍵登入**、備用密碼＋雙因素、RBAC、稽核） |
 | 3 商品與多倉庫庫存 | ✅ 完成（商品/規格/組合/照片、期初庫存、調整、盤點、FIFO 批次、網頁介面；瀏覽器端對端測試） |
 | 4 CSV / Excel 成本匯入 | ✅ 完成（依暫定範本；多工作表、自動欄位對應、預覽、FIFO 入庫；正式範本待業主提供） |
-| 5 Whatnot API 與訂單同步 | 待開始 |
+| 5 Whatnot API 與訂單同步 | ✅ 完成（REST API 同步、Webhook、直播訂單 CSV、SKU 名稱規則、更改對應、拆盒平均分攤；以業主帳號只讀驗證） |
+| 6 單場直播銷售報表 | 待開始 |
 
 ## 本機開發
 

@@ -93,6 +93,17 @@ sku_bundle_components = Table(
 )
 
 
+sku_box_contents = Table(
+    "sku_box_contents",
+    Base.metadata,
+    Column("box_sku_id", BigInteger, ForeignKey("skus.id"), primary_key=True),
+    Column("content_sku_id", BigInteger, ForeignKey("skus.id"), primary_key=True),
+    Column("qty", Integer, nullable=False),
+    CheckConstraint("qty > 0", name="qty_positive"),
+    CheckConstraint("box_sku_id <> content_sku_id", name="not_self"),
+)
+
+
 class ExternalSkuMapping(IdMixin, CreatedMixin, Base):
     """Maps a platform product/variant (e.g. a Whatnot ProductVariant) to one of our SKUs
     (which may be a bundle)."""

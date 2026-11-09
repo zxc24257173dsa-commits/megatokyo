@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useState, type FormEvent } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api } from "../api";
+import { api, newIdempotencyKey } from "../api";
 import { useAuth } from "../auth";
 import { ErrorBox, Field, Loading, Qty, SkuPicker, fmtDateTime, fmtInt, fmtUsd, useBusinessSettings } from "../components/ui";
 import { LOCATION_LABEL, MOVEMENT_LABEL, type Movement, type SkuDetail } from "../types";
@@ -57,6 +57,7 @@ export default function SkuDetailPage() {
         <div className="stack">
           {editable ? <SkuEditForm sku={s} onSaved={refresh} /> : <SkuInfo sku={s} />}
           {s.is_bundle && <ComponentsCard sku={s} editable={editable} onSaved={refresh} />}
+          {!s.is_bundle && (editable || s.box_contents.length > 0) && <BoxCard sku={s} editable={editable} onSaved={refresh} />}
           {!s.is_bundle && s.used_in_bundles.length > 0 && (
             <div className="card">
               <h2>用於組合商品</h2>
@@ -336,6 +337,83 @@ function ImagesCard({ sku, editable, onChanged }: { sku: SkuDetail; editable: bo
           {busy ? "上傳中…" : "上傳照片"}
           <input type="file" accept="image/jpeg,image/png,image/webp" multiple hidden onChange={(e) => void upload(e.target.files)} />
         </label>
+      )}
+    </div>
+  );
+}
+
+function BoxCard({ sku, editable, onSaved }: { sku: SkuDetail; editable: boolean; onSaved: () => void }) {
+  const { can } = useAuth();
+  const { japanEnabled } = useBusinessSettings();
+  const [editing, setEditing] = useState(false);
+  const [rows, setRows] = useState(sku.box_contents.map((c) => ({ sku_id: c.sku_id as number | null, qty: c.qty })));
+  const [qty, setQty] = useState("1");
+  const [note, setNote] = useState("");
+  const [key, setKey] = useState(newIdempotencyKey);
+  const [done, setDone] = useState<string | null>(null);
+  const locations = [can("inventory.adjust_us") && "US_MAIN", japanEnabled && can("inventory.adjust_jp") && "JP_MAIN"].filter(Boolean) as string[];
+  const [loc, setLoc] = useState(locations[0] ?? "");
+  const units = sku.box_contents.reduce((a, c) => a + c.qty, 0);
+  const save = useMutation({
+    mutationFn: () => api(`/skus/${sku.id}/box-contents`, { method: "PUT", body: { version: sku.version, contents: rows.filter((r) => r.sku_id).map((r) => ({ sku_id: r.sku_id, qty: r.qty })) } }),
+    onSuccess: () => (setEditing(false), onSaved()),
+  });
+  const open = useMutation({
+    mutationFn: () => api<{ qty: number; units_per_box: number }>("/inventory/box-openings", { body: { box_sku_id: sku.id, location_code: loc, qty: Number(qty), note: note || null }, idempotencyKey: key }),
+    onSuccess: (r) => {
+      setDone(`已拆 ${r.qty} 盒，取出 ${r.qty * r.units_per_box} 件；每件成本 = 盒子成本 ÷ ${r.units_per_box}`);
+      setKey(newIdempotencyKey());
+      setQty("1");
+      setNote("");
+      onSaved();
+    },
+  });
+  return (
+    <div className="card">
+      <div className="page-head" style={{ marginBottom: 8 }}>
+        <h2 style={{ margin: 0 }}>盒內內容（拆盒）</h2>
+        {editable && !editing && <button className="btn sm" onClick={() => setEditing(true)}>{sku.box_contents.length ? "修改" : "設定"}</button>}
+      </div>
+      <ErrorBox error={save.error ?? open.error} />
+      {done && <div className="alert ok small">{done}</div>}
+      {!editing ? (
+        sku.box_contents.length ? (
+          <>
+            {sku.box_contents.map((c) => (
+              <div key={c.sku_id} className="small"><Link className="mono" to={`/skus/${c.sku_id}`}>{c.sku_code}</Link> {c.name} × {c.qty}</div>
+            ))}
+            <p className="small muted">每盒共 {units} 件；拆盒時盒子成本<b>平均分給每一件</b>（每件 = 盒子成本 ÷ {units}）。</p>
+            {locations.length > 0 && (
+              <div className="row">
+                <input style={{ width: 80 }} inputMode="numeric" value={qty} onChange={(e) => setQty(e.target.value.replace(/\D/g, ""))} aria-label="拆幾盒" />
+                {locations.length > 1 && (
+                  <select style={{ width: "auto" }} value={loc} onChange={(e) => setLoc(e.target.value)} aria-label="倉庫">
+                    {locations.map((l) => <option key={l} value={l}>{LOCATION_LABEL[l]}</option>)}
+                  </select>
+                )}
+                <input style={{ flex: "1 1 140px" }} placeholder="備註（選填）" value={note} onChange={(e) => setNote(e.target.value)} aria-label="拆盒備註" />
+                <button className="btn primary" disabled={!Number(qty) || open.isPending} onClick={() => confirm(`拆 ${qty} 盒？會扣掉 ${qty} 盒、加上 ${Number(qty) * units} 件內容。`) && open.mutate()}>拆盒</button>
+              </div>
+            )}
+          </>
+        ) : <div className="muted small">設定盒子裡有哪些商品後，就可以「拆盒」：扣掉盒子、加上內容，成本平均分攤。</div>
+      ) : (
+        <>
+          {rows.map((r, i) => (
+            <div className="row" key={i} style={{ marginBottom: 8 }}>
+              <div style={{ flex: 1 }}>
+                <SkuPicker value={r.sku_id} excludeIds={[sku.id, ...rows.map((x) => x.sku_id ?? -1)]} onChange={(v) => setRows(rows.map((x, j) => (j === i ? { ...x, sku_id: v } : x)))} />
+              </div>
+              <input style={{ width: 80 }} type="number" min={1} value={r.qty} aria-label="每盒數量" onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, qty: Number(e.target.value) } : x)))} />
+              <button className="btn sm danger" type="button" onClick={() => setRows(rows.filter((_, j) => j !== i))}>移除</button>
+            </div>
+          ))}
+          <div className="row">
+            <button className="btn sm" type="button" onClick={() => setRows([...rows, { sku_id: null, qty: 1 }])}>＋ 加入內容</button>
+            <button className="btn sm primary" onClick={() => save.mutate()} disabled={save.isPending}>儲存</button>
+            <button className="btn sm" onClick={() => setEditing(false)}>取消</button>
+          </div>
+        </>
       )}
     </div>
   );

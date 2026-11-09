@@ -64,7 +64,7 @@ export function OrdersPage() {
   const [params, setParams] = useSearchParams();
   const tab = params.get("tab") ?? "orders";
   const show = params.get("show") ?? "";
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(params.get("search") ?? ""); // links can pre-fill the search
   const q = useDebounced(search);
   const shows = useQuery({ queryKey: ["livestreams"], queryFn: () => api<Show[]>("/livestreams") });
   const orders = useQuery({
@@ -232,6 +232,17 @@ export function OrderDetailPage() {
       void qc.invalidateQueries({ queryKey: ["orders"] });
     },
   });
+  const [changing, setChanging] = useState<number | null>(null);
+  const remap = useMutation({
+    mutationFn: ({ lineId, skuId }: { lineId: number; skuId: number | null }) => api<OrderDetail>(`/orders/lines/${lineId}/remap`, { body: { sku_id: skuId } }),
+    onSuccess: (d) => {
+      qc.setQueryData(["order", id], d);
+      setChanging(null);
+      void qc.invalidateQueries({ queryKey: ["unmapped"] });
+      void qc.invalidateQueries({ queryKey: ["orders"] });
+      void qc.invalidateQueries({ queryKey: ["skus"] });
+    },
+  });
   const reprocess = useMutation({
     mutationFn: () => api<OrderDetail>(`/orders/${id}/reprocess`, { method: "POST" }),
     onSuccess: (d) => qc.setQueryData(["order", id], d),
@@ -250,7 +261,7 @@ export function OrderDetailPage() {
         </div>
         {hasException && can("inventory.adjust_us") && <button className="btn" onClick={() => reprocess.mutate()} disabled={reprocess.isPending}>重新處理</button>}
       </div>
-      <ErrorBox error={map.error ?? reprocess.error} />
+      <ErrorBox error={map.error ?? reprocess.error ?? remap.error} />
       <div className="grid-2">
         <div className="card">
           <h2>金額</h2>
@@ -276,6 +287,21 @@ export function OrderDetailPage() {
                 {l.cogs && <span className="muted">成本 {fmtUsd(l.cogs)}</span>}
               </div>
               {l.exception_code && <div className="alert error small" style={{ marginTop: 6, marginBottom: 0 }}><b>{EXCEPTION[l.exception_code] ?? l.exception_code}</b>：{l.exception_detail}</div>}
+              {l.sku_id && can("catalog.edit") && can("inventory.adjust_us") && (changing !== l.id ? (
+                <button className="btn sm" style={{ marginTop: 6 }} onClick={() => setChanging(l.id)}>更改 SKU</button>
+              ) : (
+                <div style={{ marginTop: 6 }}>
+                  <div className="alert info small" style={{ marginBottom: 6 }}>會套用到這個 Whatnot 商品的所有訂單。已出貨的會把庫存退回原 SKU、沖銷成本，再用新的 SKU 重新扣庫存；營收不變。</div>
+                  <div className="row" style={{ flexWrap: "nowrap" }}>
+                    <div style={{ flex: 1 }}><SkuPicker value={sku[l.id] ?? null} onChange={(v) => setSku({ ...sku, [l.id]: v })} excludeBundles={false} excludeIds={[l.sku_id]} /></div>
+                    <button className="btn sm primary" disabled={!sku[l.id] || remap.isPending} onClick={() => remap.mutate({ lineId: l.id, skuId: sku[l.id] ?? null })}>改為這個 SKU</button>
+                  </div>
+                  <div className="row" style={{ marginTop: 6 }}>
+                    <button className="btn sm danger" disabled={remap.isPending} onClick={() => confirm("取消這個商品的 SKU 對應？已扣的庫存與成本會退回。") && remap.mutate({ lineId: l.id, skuId: null })}>取消對應</button>
+                    <button className="btn sm" onClick={() => setChanging(null)}>取消</button>
+                  </div>
+                </div>
+              ))}
               {!l.sku_id && can("catalog.edit") && (
                 <div className="row" style={{ marginTop: 6, flexWrap: "nowrap" }}>
                   <div style={{ flex: 1 }}><SkuPicker value={sku[l.id] ?? null} onChange={(v) => setSku({ ...sku, [l.id]: v })} excludeBundles={false} /></div>

@@ -17,6 +17,8 @@
 | 13 | 程式碼儲存庫 | GitHub `megatokyo`（私人） | 已推送 |
 | 14 | 登入方式 | **Google 帳號一鍵登入**；密碼＋驗證碼為備用 | docs/02 |
 | 15 | 成本試算表 | 匯率寫「1 USD = 150 JPY」；運費日幣、關稅 USD；一個批次可含多個 SKU | docs/04 |
+| 17 | 拆盒成本 | **平均分攤**：盒子成本 ÷ 盒內件數 | docs/05 |
+| 18 | 訂單 SKU 對應 | Whatnot 商品名稱去掉 #編號後對應一次 | docs/05 |
 | 16 | 日本倉 | 不使用（`ERP_JAPAN_WAREHOUSE_ENABLED=false`），可日後開啟 | docs/04 |
 
 ## 尚待提供

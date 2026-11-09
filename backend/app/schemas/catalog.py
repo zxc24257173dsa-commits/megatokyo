@@ -134,6 +134,7 @@ class SkuDetail(SkuListItem):
     brand: str | None
     description: str | None
     components: list[dict]
+    box_contents: list[dict] = []
     used_in_bundles: list[dict]
     images: list[ImageOut]
     lots: list[LotOut]

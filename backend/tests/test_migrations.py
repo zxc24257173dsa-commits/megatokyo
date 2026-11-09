@@ -18,6 +18,6 @@ def test_full_downgrade_then_upgrade_roundtrip(engine):
     assert remaining == []
     command.upgrade(cfg, "head")
     with eng.connect() as c:
-        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0009"
-        assert len(inspect(c).get_table_names()) == 59  # 58 business tables + alembic_version
+        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0010"
+        assert len(inspect(c).get_table_names()) == 61  # 60 business tables + alembic_version
     eng.dispose()

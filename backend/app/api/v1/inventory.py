@@ -184,3 +184,35 @@ def cancel_count(count_id: int, current: CurrentUser = Depends(view), db: Sessio
     sc = svc.cancel_count(db, actor_id=current.id, count_id=count_id, ctx=ctx)
     db.commit()
     return _count_out(db, sc)
+
+
+# ---------- sealed boxes ----------
+
+class BoxOpenIn(BaseModel):
+    box_sku_id: int
+    location_code: StockLocation
+    qty: int = Field(ge=1, le=10_000)
+    note: str | None = Field(default=None, max_length=500)
+
+
+@router.post("/box-openings", status_code=201)
+def open_boxes(body: BoxOpenIn, idempotency_key: str = IdemKey, current: CurrentUser = Depends(view),
+               db: Session = Depends(get_db), ctx: RequestContext = Depends(get_request_context)):
+    from app.services import boxes
+    svc.require_location_permission(body.location_code, current.permissions)
+    op = boxes.open_boxes(db, actor_id=current.id, box_sku_id=body.box_sku_id, location_code=body.location_code,
+                          qty=body.qty, idempotency_key=idempotency_key, note=body.note, ctx=ctx)
+    db.commit()
+    return {"id": op.id, "qty": op.qty, "units_per_box": op.units_per_box, "contents": op.contents}
+
+
+@router.get("/box-openings")
+def list_openings(box_sku_id: int | None = None, _: CurrentUser = Depends(view), db: Session = Depends(get_db)):
+    from sqlalchemy import text
+    rows = db.execute(text("""
+        SELECT o.id, o.created_at, o.qty, o.units_per_box, o.contents, o.note, s.sku_code AS box_sku_code,
+               l.code AS location_code, u.display_name AS created_by
+          FROM box_openings o JOIN skus s ON s.id = o.box_sku_id JOIN locations l ON l.id = o.location_id
+          LEFT JOIN users u ON u.id = o.created_by
+         WHERE (CAST(:b AS bigint) IS NULL OR o.box_sku_id = :b) ORDER BY o.id DESC LIMIT 100"""), {"b": box_sku_id})
+    return [dict(r) for r in rows.mappings()]
