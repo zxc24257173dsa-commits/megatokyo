@@ -52,6 +52,16 @@ class Settings(BaseSettings):
     mfa_required_roles: list[str] = ["admin"]
     mfa_issuer: str = "Megatokyo ERP"
 
+    # ---- File storage (Phase 3) ----
+    # "local" stores under storage_dir (dev / single server). Phase 12 adds Google Cloud Storage.
+    storage_backend: Literal["local"] = "local"
+    storage_dir: str = "var/storage"
+    max_image_bytes: int = 5 * 1024 * 1024
+    file_url_ttl_seconds: int = 3600
+
+    # Built SPA (frontend/dist). Served by the API in production so both share one origin.
+    frontend_dist: str = "../frontend/dist"
+
     @model_validator(mode="after")
     def _no_dev_secrets_outside_dev(self):
         if self.env in ("staging", "production"):

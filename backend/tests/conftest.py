@@ -14,6 +14,8 @@ os.environ["ERP_DATABASE_URL"] = TEST_DB_URL
 os.environ["ERP_ENV"] = "test"
 os.environ["ERP_LOG_JSON"] = "false"
 os.environ["ERP_COOKIE_SECURE"] = "false"  # TestClient talks plain http
+import tempfile  # noqa: E402
+os.environ["ERP_STORAGE_DIR"] = tempfile.mkdtemp(prefix="erp-test-storage-")
 
 from alembic import command  # noqa: E402
 from alembic.config import Config  # noqa: E402
@@ -140,3 +142,18 @@ def enroll_mfa(api, token):
     r = api.post("/api/v1/auth/mfa/enable", json={"code": pyotp.TOTP(secret).now()}, headers=auth_header(token))
     assert r.status_code == 204, r.text
     return secret
+
+
+def token_for(api, db, *roles):
+    """User with the given (non-admin) roles and their access token."""
+    u = make_user(db, roles=list(roles))
+    r = login(api, u.email)
+    assert r.status_code == 200, r.text
+    return u, r.json()["token"]["access_token"]
+
+
+_idem_counter = iter(range(10**9))
+
+
+def idem() -> dict:
+    return {"Idempotency-Key": f"test-{uuid.uuid4().hex[:12]}-{next(_idem_counter)}"}

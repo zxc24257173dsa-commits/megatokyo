@@ -69,9 +69,17 @@ class SkuImage(IdMixin, CreatedMixin, Base):
     __tablename__ = "sku_images"
 
     sku_id: Mapped[int] = mapped_column(ForeignKey("skus.id", ondelete="CASCADE"), nullable=False, index=True)
-    storage_key: Mapped[str] = mapped_column(Text, nullable=False)
+    storage_key: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    content_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     is_primary: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+
+    __table_args__ = (
+        Index("uq_sku_images_one_primary", "sku_id", unique=True, postgresql_where="is_primary"),
+        CheckConstraint("size_bytes > 0", name="size_positive"),
+    )
 
 
 sku_bundle_components = Table(

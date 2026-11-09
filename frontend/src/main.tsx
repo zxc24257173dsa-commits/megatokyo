@@ -1,0 +1,57 @@
+import { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { AuthProvider, useAuth } from "./auth";
+import Layout from "./components/Layout";
+import { Loading } from "./components/ui";
+import { ForcedMfaPage, ForcedPasswordPage, LoginPage } from "./pages/AuthPages";
+import InventoryPage from "./pages/InventoryPage";
+import { NewBundlePage, NewProductPage } from "./pages/ProductForms";
+import SkuDetailPage from "./pages/SkuDetailPage";
+import { StockCountPage, StockCountsPage, StockOperationsPage } from "./pages/StockPages";
+import { AccountPage, UsersPage } from "./pages/UsersPage";
+import "./styles.css";
+
+// Three offices share one database: refetch when a tab regains focus so Japan sees what the
+// US just changed without a manual reload.
+const queryClient = new QueryClient({
+  defaultOptions: { queries: { staleTime: 15_000, refetchOnWindowFocus: true, retry: 1 } },
+});
+
+function Gate() {
+  const { state, can } = useAuth();
+  if (state.status === "loading") return <Loading />;
+  if (state.status === "anonymous") return <LoginPage />;
+  const r = state.me.restrictions;
+  if (r.includes("password_change_required")) return <ForcedPasswordPage />;
+  if (r.includes("mfa_setup_required")) return <ForcedMfaPage />;
+  return (
+    <Routes>
+      <Route element={<Layout />}>
+        <Route index element={can("inventory.view") ? <InventoryPage /> : <Navigate to="/account" />} />
+        <Route path="skus/:id" element={<SkuDetailPage />} />
+        <Route path="products/new" element={<NewProductPage />} />
+        <Route path="bundles/new" element={<NewBundlePage />} />
+        <Route path="stock/operations" element={<StockOperationsPage />} />
+        <Route path="stock/counts" element={<StockCountsPage />} />
+        <Route path="stock/counts/:id" element={<StockCountPage />} />
+        <Route path="users" element={<UsersPage />} />
+        <Route path="account" element={<AccountPage />} />
+        <Route path="*" element={<Navigate to="/" />} />
+      </Route>
+    </Routes>
+  );
+}
+
+createRoot(document.getElementById("root")!).render(
+  <StrictMode>
+    <QueryClientProvider client={queryClient}>
+      <BrowserRouter>
+        <AuthProvider>
+          <Gate />
+        </AuthProvider>
+      </BrowserRouter>
+    </QueryClientProvider>
+  </StrictMode>,
+);

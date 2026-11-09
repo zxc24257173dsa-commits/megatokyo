@@ -5,6 +5,7 @@
 - 設計文件：[`docs/00-architecture-and-database-design.md`](docs/00-architecture-and-database-design.md)
 - 已確認的業務決策：[`docs/01-decisions.md`](docs/01-decisions.md)
 - 登入與權限：[`docs/02-auth-and-permissions.md`](docs/02-auth-and-permissions.md)
+- 商品與庫存：[`docs/03-catalog-and-inventory.md`](docs/03-catalog-and-inventory.md)
 
 ## 目前進度
 
@@ -12,7 +13,8 @@
 |---|---|
 | 1 系統架構與資料庫 | ✅ 完成（57 張資料表、資料庫層完整性規則、41 項自動測試） |
 | 2 登入、權限與多地同步 | ✅ 完成（Argon2id、JWT＋refresh 輪替、TOTP 雙因素、鎖定、RBAC、稽核；共 72 項測試） |
-| 3 商品與多倉庫庫存 | 待開始 |
+| 3 商品與多倉庫庫存 | ✅ 完成（商品/規格/組合/照片、期初庫存、調整、盤點、FIFO 批次、網頁介面；88 項後端測試＋瀏覽器端對端測試） |
+| 4 CSV / Excel 成本匯入 | 待開始（需要成本試算表） |
 
 ## 本機開發
 
@@ -39,6 +41,14 @@ cp .env.example .env          # 依需要修改連線字串
 alembic upgrade head          # 建立/升級資料庫
 python -m app.cli create-admin --email you@example.com --name "Owner"   # 第一位管理員
 uvicorn app.main:app --reload
+```
+
+網頁（另一個終端機）：
+
+```bash
+cd frontend
+npm install
+npm run dev        # http://localhost:5173
 ```
 
 ### 執行測試

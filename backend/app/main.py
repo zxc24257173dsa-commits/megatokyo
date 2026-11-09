@@ -1,13 +1,16 @@
 import logging
 import time
 import uuid
+from pathlib import Path
 
 from fastapi import FastAPI, Request
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.v1 import auth, health, users
+from app.api.v1 import auth, catalog, health, inventory, users
 from app.core.config import get_settings
-from app.core.errors import register_exception_handlers
+from app.core.errors import AppError, register_exception_handlers
 from app.core.logging import configure_logging, request_id_var
 
 settings = get_settings()
@@ -57,3 +60,20 @@ app.include_router(health.router)
 app.include_router(health.router, prefix="/api/v1")
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(users.router, prefix="/api/v1")
+app.include_router(catalog.router, prefix="/api/v1")
+app.include_router(inventory.router, prefix="/api/v1")
+
+
+# ---------- single-page app (production) ----------
+_dist = Path(settings.frontend_dist).resolve()
+if (_dist / "index.html").is_file():
+    app.mount("/assets", StaticFiles(directory=_dist / "assets"), name="assets")
+
+    @app.get("/{path:path}", include_in_schema=False)
+    def spa(path: str):
+        if path.startswith("api/"):
+            raise AppError("http_404", "Not Found", 404)
+        file = (_dist / path).resolve()
+        if path and _dist in file.parents and file.is_file():
+            return FileResponse(file)
+        return FileResponse(_dist / "index.html", headers={"Cache-Control": "no-cache"})

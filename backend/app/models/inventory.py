@@ -162,6 +162,8 @@ class StockCount(IdMixin, TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="draft")
     counted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    submitted_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     approved_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     note: Mapped[str | None] = mapped_column(Text)
@@ -174,8 +176,9 @@ class StockCountLine(IdMixin, Base):
 
     stock_count_id: Mapped[int] = mapped_column(ForeignKey("stock_counts.id", ondelete="CASCADE"), nullable=False)
     sku_id: Mapped[int] = mapped_column(ForeignKey("skus.id"), nullable=False)
-    expected_qty: Mapped[int] = mapped_column(Integer, nullable=False)
+    expected_qty: Mapped[int] = mapped_column(Integer, nullable=False)  # system qty; refreshed at approval
     counted_qty: Mapped[int | None] = mapped_column(Integer)
+    difference_qty: Mapped[int | None] = mapped_column(Integer)  # counted - system, posted at approval
 
     __table_args__ = (
         UniqueConstraint("stock_count_id", "sku_id"),
