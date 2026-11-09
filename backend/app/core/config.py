@@ -66,6 +66,11 @@ class Settings(BaseSettings):
     def google_enabled(self) -> bool:
         return bool(self.google_client_id and self.google_client_secret)
 
+    # ---- Business flow ----
+    # Owner (2026-11-09): goods are shipped from Japan straight to the US; no Japan warehouse.
+    # When false the UI hides the Japan warehouse and JP_MAIN stock operations are refused.
+    japan_warehouse_enabled: bool = False
+
     # ---- File storage (Phase 3) ----
     # "local" stores under storage_dir (dev / single server). Phase 12 adds Google Cloud Storage.
     storage_backend: Literal["local"] = "local"

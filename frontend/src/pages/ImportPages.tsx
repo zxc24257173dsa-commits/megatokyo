@@ -160,7 +160,7 @@ export function ImportDetailPage() {
       {j.status === "committed" && j.stats.result && (
         <div className="alert ok">
           匯入完成：{isCost
-            ? `${j.stats.result.batches} 個採購批次、${j.stats.result.lines} 筆成本，落地成本合計 ${fmtUsd(j.stats.result.landed_total_usd)}${j.stats.result.new_skus ? `，新增 ${j.stats.result.new_skus} 個 SKU` : ""}。成本已入帳，商品實際到日本倉時，請到「採購批次」按入庫。`
+            ? `${j.stats.result.batches} 個採購批次、${j.stats.result.lines} 筆成本，落地成本合計 ${fmtUsd(j.stats.result.landed_total_usd)}${j.stats.result.new_skus ? `，新增 ${j.stats.result.new_skus} 個 SKU` : ""}。成本已入帳；商品從日本寄出時，到「採購批次」按「寄出」，美國收到後按「簽收」。`
             : `新增 ${j.stats.result.created} 個 SKU、更新 ${j.stats.result.updated} 個 SKU。`}
           {isCost && <> <Link to="/purchasing">前往採購批次 →</Link></>}
         </div>

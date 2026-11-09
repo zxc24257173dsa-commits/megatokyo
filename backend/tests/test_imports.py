@@ -265,31 +265,63 @@ def test_bundle_cannot_be_purchased(api, db):
     assert "組合商品不能直接採購" in rows_of(api, tok, job["id"])[2]["errors"][0]
 
 
-def test_receive_into_japan_creates_fifo_lots(api, db):
-    _, tok = token_for(api, db, *COSTER)
-    sid = create_product(api, tok, codes=("RCV-1",))["sku_ids"][0]
-    job = upload(api, tok, workbook([cost_row("RCV-B", "RCV-1", "x", "2026-10-01", 10, 1000, "JPY", 150, intl=450,
-                                              r=2)])).json()
-    commit(api, tok, job["id"])
-    batch = [b for b in api.get("/api/v1/purchase-batches", headers=auth_header(tok)).json() if b["batch_no"] == "RCV-B"][0]
-    assert (batch["qty"], batch["received"]) == (10, 0)
-    line = api.get(f"/api/v1/purchase-batches/{batch['id']}", headers=auth_header(tok)).json()["lines"][0]
-    url = f"/api/v1/purchase-lines/{line['id']}/receive"
+def test_ship_from_japan_then_receive_in_us(api, db):
+    """Owner's flow: bought in Japan, shipped straight to the US (no Japan warehouse)."""
+    _, jp = token_for(api, db, "jp_inventory", "tw_manager")   # can import + ship, cannot receive in US
+    _, us = token_for(api, db, "us_live_ops")                   # US staff receive
+    sid = create_product(api, jp, codes=("RCV-1",))["sku_ids"][0]
+    job = upload(api, jp, workbook([cost_row("RCV-B", "RCV-1", "x", "2026-10-01", 10, 1000, "JPY", 150, intl=450,
+                                             r=2)])).json()
+    commit(api, jp, job["id"])
+    batch = [b for b in api.get("/api/v1/purchase-batches", headers=auth_header(jp)).json() if b["batch_no"] == "RCV-B"][0]
+    assert (batch["qty"], batch["shipped"], batch["in_transit"], batch["received_us"]) == (10, 0, 0, 0)
+    line = api.get(f"/api/v1/purchase-batches/{batch['id']}", headers=auth_header(jp)).json()["lines"][0]
+    ship, recv = f"/api/v1/purchase-lines/{line['id']}/ship", f"/api/v1/purchase-lines/{line['id']}/receive"
+
     key = idem()
-    r1 = api.post(url, headers={**auth_header(tok), **key}, json={"qty": 4, "received_on": "2026-10-10"})
-    r1b = api.post(url, headers={**auth_header(tok), **key}, json={"qty": 4, "received_on": "2026-10-10"})
-    assert r1.status_code == 201 and r1.json() == r1b.json()  # double tap: received once
-    over = api.post(url, headers={**auth_header(tok), **idem()}, json={"qty": 7})
-    assert over.status_code == 409 and over.json()["error"]["details"]["already_received"] == 4
-    assert api.post(url, headers={**auth_header(tok), **idem()}, json={"qty": 6}).status_code == 201
-    d = api.get(f"/api/v1/skus/{sid}", headers=auth_header(tok)).json()
-    assert d["jp_on_hand"] == 10
+    a = api.post(ship, headers={**auth_header(jp), **key}, json={"qty": 4, "on_date": "2026-10-10"})
+    b = api.post(ship, headers={**auth_header(jp), **key}, json={"qty": 4, "on_date": "2026-10-10"})
+    assert a.status_code == 201 and a.json() == b.json()  # double tap: shipped once
+    assert api.post(ship, headers={**auth_header(jp), **idem()}, json={"qty": 6, "on_date": "2026-10-17"}).status_code == 201
+    over = api.post(ship, headers={**auth_header(jp), **idem()}, json={"qty": 1})
+    assert over.status_code == 409 and over.json()["error"]["code"] == "over_shipment"
+
+    d = api.get(f"/api/v1/skus/{sid}", headers=auth_header(jp)).json()
+    assert (d["in_transit"], d["us_on_hand"], d["us_available"], d["jp_on_hand"]) == (10, 0, 0, 0)  # not sellable yet
+    detail = api.get(f"/api/v1/purchase-batches/{batch['id']}", headers=auth_header(jp)).json()
+    assert [s["eta"] for s in detail["lines"][0]["shipments"]] == ["2026-10-19", "2026-10-26"]  # ship date + 9 days
+
+    # receiving is US staff's job; Japan staff can't, US staff can't ship
+    assert api.post(recv, headers={**auth_header(jp), **idem()}, json={"qty": 1}).status_code == 403
+    assert api.post(ship, headers={**auth_header(us), **idem()}, json={"qty": 1}).status_code == 403
+    r = api.post(recv, headers={**auth_header(us), **idem()}, json={"qty": 7, "on_date": "2026-10-20"})
+    assert r.status_code == 201 and (r.json()["in_transit"], r.json()["received_us"]) == (3, 7)
+    assert len(r.json()["movement_ids"]) == 2  # earliest shipment (4) fully, then 3 of the second
+    over = api.post(recv, headers={**auth_header(us), **idem()}, json={"qty": 4})
+    assert over.status_code == 409 and over.json()["error"]["details"]["in_transit"] == 3
+
+    d = api.get(f"/api/v1/skus/{sid}", headers=auth_header(jp)).json()
+    assert (d["in_transit"], d["us_on_hand"], d["us_available"]) == (3, 7, 7)
     # landed unit cost = (10 x 1000 / 150 + 450 / 150) / 10 = (66.6667 + 3.00) / 10 = 6.96667
-    lots = [(l["jp"], l["unit_cost_base"]) for l in d["lots"]]
-    assert lots == [(4, "6.966670"), (6, "6.966670")], lots
+    lots = [(l["in_transit"], l["us"], l["unit_cost_base"]) for l in d["lots"]]
+    assert lots == [(0, 4, "6.966670"), (3, 3, "6.966670")], lots
     assert d["lots"][0]["received_at"].startswith("2026-10-10")
-    _, us = token_for(api, db, "us_live_ops")
-    assert api.post(url, headers={**auth_header(us), **idem()}, json={"qty": 1}).status_code == 403
+    assert db.execute(text("SELECT count(*) FROM v_inventory_reconciliation")).scalar_one() == 0
+
+
+def test_japan_warehouse_off_by_default(api, db, monkeypatch):
+    from app.core.config import get_settings
+    monkeypatch.setattr(get_settings(), "japan_warehouse_enabled", False)
+    _, tok = token_for(api, db, *COSTER)
+    sid = create_product(api, tok, codes=("NOJP-1",))["sku_ids"][0]
+    r = api.post("/api/v1/inventory/opening-stock", headers={**auth_header(tok), **idem()},
+                 json={"location_code": "JP_MAIN", "lines": [{"sku_id": sid, "qty": 1, "unit_cost_usd": "1"}]})
+    assert r.status_code == 422 and r.json()["error"]["code"] == "japan_warehouse_disabled"
+    r = api.post("/api/v1/inventory/opening-stock", headers={**auth_header(tok), **idem()},
+                 json={"location_code": "US_MAIN", "lines": [{"sku_id": sid, "qty": 1, "unit_cost_usd": "1"}]})
+    assert r.status_code == 201
+    s = api.get("/api/v1/settings/business", headers=auth_header(tok)).json()
+    assert s == {"japan_warehouse_enabled": False, "lead_time_days": 9}
 
 
 def test_import_permissions(api, db):

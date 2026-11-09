@@ -12,7 +12,9 @@ interface BatchRow {
   supplier: string | null;
   line_count: number;
   qty: number;
-  received: number;
+  shipped: number;
+  in_transit: number;
+  received_us: number;
   landed_total?: string;
 }
 
@@ -23,7 +25,10 @@ interface Line {
   sku_code: string;
   name: string;
   qty: number;
-  received: number;
+  shipped: number;
+  in_transit: number;
+  received_us: number;
+  shipments: { shipped_at: string; qty: number; in_transit: number; eta: string }[];
   note: string | null;
   unit_price_orig?: string;
   currency_orig?: string;
@@ -39,9 +44,15 @@ interface Line {
   landed_unit_cost_base?: string;
 }
 
-function Progress({ received, qty }: { received: number; qty: number }) {
-  const done = received >= qty;
-  return <span className={`badge ${done ? "ok" : received > 0 ? "warn" : "info"}`}>{done ? "已全部入庫" : `已入庫 ${fmtInt(received)} / ${fmtInt(qty)}`}</span>;
+function Progress({ qty, shipped, in_transit, received_us }: { qty: number; shipped: number; in_transit: number; received_us: number }) {
+  if (received_us >= qty) return <span className="badge ok">美國已全部簽收</span>;
+  return (
+    <span className="row" style={{ gap: 4, display: "inline-flex" }}>
+      <span className={`badge ${shipped >= qty ? "ok" : shipped ? "warn" : ""}`}>已寄出 {fmtInt(shipped)} / {fmtInt(qty)}</span>
+      {in_transit > 0 && <span className="badge info">運送中 {fmtInt(in_transit)}</span>}
+      {received_us > 0 && <span className="badge ok">美國已收 {fmtInt(received_us)}</span>}
+    </span>
+  );
 }
 
 export function PurchaseBatchesPage() {
@@ -61,12 +72,12 @@ export function PurchaseBatchesPage() {
       <div className="card">
         <div className="row" style={{ marginBottom: 12 }}>
           <input style={{ flex: "1 1 220px" }} placeholder="搜尋批次編號、SKU…" value={search} onChange={(e) => setSearch(e.target.value)} aria-label="搜尋" />
-          <label className="row small"><input type="checkbox" checked={onlyOpen} onChange={(e) => setOnlyOpen(e.target.checked)} /> 只看尚未全部入庫</label>
+          <label className="row small"><input type="checkbox" checked={onlyOpen} onChange={(e) => setOnlyOpen(e.target.checked)} /> 只看美國尚未全部簽收</label>
         </div>
         <ErrorBox error={list.error} />
         {list.isLoading ? <Loading /> : !list.data?.length ? <div className="empty">沒有採購批次。到「試算表匯入」上傳成本試算表。</div> : (
           <table className="data responsive">
-            <thead><tr><th>批次</th><th>採購日</th><th>供應商</th><th className="num">SKU 數</th><th>入庫</th>{showCost && <th className="num">落地成本合計</th>}</tr></thead>
+            <thead><tr><th>批次</th><th>採購日</th><th>供應商</th><th className="num">SKU 數</th><th>進度</th>{showCost && <th className="num">落地成本合計</th>}</tr></thead>
             <tbody>
               {list.data.map((b) => (
                 <tr key={b.id} className="click" onClick={() => nav(`/purchasing/${b.id}`)}>
@@ -74,7 +85,7 @@ export function PurchaseBatchesPage() {
                   <td data-label="採購日">{fmtDate(b.purchase_date)}</td>
                   <td data-label="供應商">{b.supplier ?? "—"}</td>
                   <td data-label="SKU 數" className="num">{b.line_count}</td>
-                  <td data-label="入庫"><Progress received={b.received} qty={b.qty} /></td>
+                  <td data-label="進度"><Progress {...b} /></td>
                   {showCost && <td data-label="落地成本合計" className="num">{fmtUsd(b.landed_total)}</td>}
                 </tr>
               ))}
@@ -91,7 +102,7 @@ export function PurchaseBatchPage() {
   const { can } = useAuth();
   const batch = useQuery({
     queryKey: ["batch", id],
-    queryFn: () => api<{ id: number; batch_no: string; purchase_date: string; supplier: string | null; confirmed_at: string; import_job_id: number | null; can_view_cost: boolean; lines: Line[] }>(`/purchase-batches/${id}`),
+    queryFn: () => api<{ id: number; batch_no: string; purchase_date: string; supplier: string | null; confirmed_at: string; import_job_id: number | null; can_view_cost: boolean; lead_time_days: number; lines: Line[] }>(`/purchase-batches/${id}`),
   });
   if (batch.isLoading) return <Loading />;
   if (!batch.data) return <ErrorBox error={batch.error} />;
@@ -107,14 +118,16 @@ export function PurchaseBatchPage() {
             {b.import_job_id && <> ・<Link to={`/imports/${b.import_job_id}`}>來源匯入</Link></>}</div>
         </div>
       </div>
-      <div className="alert info small">成本紀錄已鎖定，不能修改或刪除。商品實際到達日本倉時按「入庫」，系統會用這筆的落地成本建立先進先出批次。</div>
+      <div className="alert info small">
+        成本紀錄已鎖定，不能修改或刪除。流程：日本按<b>「寄出」</b>→ 運送中（還不能賣，預計 {b.lead_time_days} 天到）→ 美國按<b>「簽收」</b>→ 變成美國可銷售庫存。
+      </div>
       {b.lines.map((l) => (
         <div className="card" key={l.id}>
           <div className="page-head" style={{ marginBottom: 8 }}>
             <div>
               <Link to={`/skus/${l.sku_id}`} className="mono">{l.sku_code}</Link> <span className="muted">{l.name}</span>
             </div>
-            <Progress received={l.received} qty={l.qty} />
+            <Progress {...l} />
           </div>
           {cost && (
             <dl className="kv" style={{ marginBottom: 12 }}>
@@ -126,38 +139,55 @@ export function PurchaseBatchPage() {
             </dl>
           )}
           {l.note && <p className="small muted">{l.note}</p>}
-          {can("inventory.adjust_jp") && l.received < l.qty && <ReceiveForm line={l} batchId={id} />}
+          {l.shipments.some((x) => x.in_transit > 0) && (
+            <div className="small" style={{ marginBottom: 10 }}>
+              {l.shipments.filter((x) => x.in_transit > 0).map((x, i) => (
+                <div key={i} className="muted">運送中 {fmtInt(x.in_transit)} 件：{fmtDate(x.shipped_at)} 寄出，預計 {fmtDate(x.eta)} 到美國</div>
+              ))}
+            </div>
+          )}
+          <div className="stack">
+            {can("shipment.manage_jp") && l.shipped < l.qty && (
+              <LineAction line={l} batchId={id} action="ship" max={l.qty - l.shipped} label="從日本寄出" hint={`尚未寄出 ${fmtInt(l.qty - l.shipped)} 件`} />
+            )}
+            {can("shipment.receive_us") && l.in_transit > 0 && (
+              <LineAction line={l} batchId={id} action="receive" max={l.in_transit} label="美國簽收" hint={`運送中 ${fmtInt(l.in_transit)} 件`} />
+            )}
+          </div>
         </div>
       ))}
     </>
   );
 }
 
-function ReceiveForm({ line, batchId }: { line: Line; batchId: number }) {
+function LineAction({ line, batchId, action, max, label, hint }: { line: Line; batchId: number; action: "ship" | "receive"; max: number; label: string; hint: string }) {
   const qc = useQueryClient();
-  const remaining = line.qty - line.received;
-  const [qty, setQty] = useState(String(remaining));
+  const [qty, setQty] = useState(String(max));
   const [date, setDate] = useState("");
   const [key, setKey] = useState(newIdempotencyKey);
   const m = useMutation({
-    mutationFn: () => api(`/purchase-lines/${line.id}/receive`, { body: { qty: Number(qty), received_on: date || null }, idempotencyKey: key }),
+    mutationFn: () => api(`/purchase-lines/${line.id}/${action}`, { body: { qty: Number(qty), on_date: date || null }, idempotencyKey: key }),
     onSuccess: () => {
       setKey(newIdempotencyKey());
+      setQty(""); // cleared so a second tap can't repeat the same shipment / receipt by accident
+      setDate("");
       void qc.invalidateQueries({ queryKey: ["batch", batchId] });
       void qc.invalidateQueries({ queryKey: ["batches"] });
       void qc.invalidateQueries({ queryKey: ["skus"] });
+      void qc.invalidateQueries({ queryKey: ["inv-summary"] });
     },
   });
+  const word = action === "ship" ? "寄出" : "簽收";
   return (
     <div>
       <ErrorBox error={m.error} />
       <div className="row">
-        <input style={{ width: 100 }} inputMode="numeric" value={qty} onChange={(e) => setQty(e.target.value.replace(/\D/g, ""))} aria-label={`${line.sku_code} 入庫數量`} />
-        <input style={{ width: 170 }} type="date" value={date} onChange={(e) => setDate(e.target.value)} aria-label="到貨日期" title="到貨日期（空白 = 今天）" />
-        <button className="btn primary" disabled={m.isPending || !Number(qty) || Number(qty) > remaining} onClick={() => m.mutate()}>
-          入庫到日本倉
+        <input style={{ width: 90 }} inputMode="numeric" value={qty} onChange={(e) => setQty(e.target.value.replace(/\D/g, ""))} aria-label={`${line.sku_code} ${word}數量`} />
+        <input style={{ width: 170 }} type="date" value={date} onChange={(e) => setDate(e.target.value)} aria-label={`${word}日期`} title={`${word}日期（空白 = 今天）`} />
+        <button className={`btn ${action === "receive" ? "primary" : ""}`} disabled={m.isPending || !Number(qty) || Number(qty) > max} onClick={() => m.mutate()}>
+          {label}
         </button>
-        <span className="small muted">尚未入庫 {fmtInt(remaining)} 件；日期空白 = 今天</span>
+        <span className="small muted">{hint}；日期空白 = 今天</span>
       </div>
     </div>
   );

@@ -3,12 +3,13 @@ import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import { useAuth } from "../auth";
-import { ErrorBox, Field, Loading, Qty, SkuPicker, fmtDateTime, fmtInt, fmtUsd } from "../components/ui";
+import { ErrorBox, Field, Loading, Qty, SkuPicker, fmtDateTime, fmtInt, fmtUsd, useBusinessSettings } from "../components/ui";
 import { LOCATION_LABEL, MOVEMENT_LABEL, type Movement, type SkuDetail } from "../types";
 
 export default function SkuDetailPage() {
   const id = Number(useParams().id);
   const { can, me } = useAuth();
+  const { japanEnabled } = useBusinessSettings();
   const qc = useQueryClient();
   const sku = useQuery({ queryKey: ["sku", id], queryFn: () => api<SkuDetail>(`/skus/${id}`) });
   const moves = useQuery({
@@ -44,8 +45,8 @@ export default function SkuDetailPage() {
         </div>
       </div>
 
-      <div className="tiles">
-        <div className="tile"><div className="label">日本倉</div><div className="value"><Qty n={s.jp_on_hand} /></div></div>
+      <div className="tiles" style={japanEnabled ? undefined : { gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }}>
+        {japanEnabled && <div className="tile"><div className="label">日本倉</div><div className="value"><Qty n={s.jp_on_hand} /></div></div>}
         <div className="tile"><div className="label">運送中</div><div className="value"><Qty n={s.in_transit} kind="transit" /></div></div>
         <div className="tile"><div className="label">美國倉</div><div className="value"><Qty n={s.us_on_hand} /></div><div className="sub">已預留 {fmtInt(s.us_reserved)}</div></div>
         <div className="tile"><div className="label">美國可銷售</div><div className="value"><Qty n={s.us_available} /></div>
@@ -80,8 +81,8 @@ export default function SkuDetailPage() {
                     <thead>
                       <tr>
                         <th>批次</th>
-                        <th>入庫</th>
-                        <th className="num">日本</th>
+                        <th>{japanEnabled ? "入庫" : "日本寄出"}</th>
+                        {japanEnabled && <th className="num">日本</th>}
                         <th className="num">運送中</th>
                         <th className="num">美國</th>
                         {s.can_view_cost && <th className="num">單位成本</th>}
@@ -92,7 +93,7 @@ export default function SkuDetailPage() {
                         <tr key={l.id} style={l.remaining === 0 ? { opacity: 0.5 } : undefined}>
                           <td className="mono">{l.lot_no}</td>
                           <td className="small">{fmtDateTime(l.received_at, me?.timezone)}</td>
-                          <td className="num"><Qty n={l.jp} /></td>
+                          {japanEnabled && <td className="num"><Qty n={l.jp} /></td>}
                           <td className="num"><Qty n={l.in_transit} kind="transit" /></td>
                           <td className="num"><Qty n={l.us} /></td>
                           {s.can_view_cost && <td className="num">{fmtUsd(l.unit_cost_base)}</td>}

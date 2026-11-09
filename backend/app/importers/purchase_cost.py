@@ -8,8 +8,9 @@ Rules
   * Shipping (Japan domestic + international) is in JPY; duty / other costs are in USD.
   * Cost formulas are recomputed here; numbers typed in the sheet are only cross-checked.
   * A batch ID that already exists in the ERP is rejected (history is never overwritten).
-  * Importing records COST ONLY. Stock enters the Japan warehouse through an explicit
-    "receive" action, so past batches that were already sold don't become phantom stock.
+  * Importing records COST ONLY. Stock appears only through explicit "ship from Japan" (in
+    transit) and "receive in the US" actions, so past batches already sold don't become
+    phantom stock.
 """
 import re
 from dataclasses import dataclass, field

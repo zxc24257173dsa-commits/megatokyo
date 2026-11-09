@@ -150,17 +150,38 @@ def get_batch(batch_id: int, current: CurrentUser = Depends(require_permissions(
     return purchasing.batch_detail(db, batch_id, with_cost=q.can_view_cost(current.permissions))
 
 
-class ReceiveIn(BaseModel):
+class LineActionIn(BaseModel):
     qty: int = Field(ge=1, le=1_000_000)
-    received_on: date | None = None
+    on_date: date | None = None  # shipping / receiving date; blank = today
+
+
+IdemKey = Header(alias="Idempotency-Key", min_length=8, max_length=64, pattern=r"^[A-Za-z0-9-]+$")
+
+
+@router.post("/purchase-lines/{line_id}/ship", status_code=201)
+def ship(line_id: int, body: LineActionIn, idempotency_key: str = IdemKey,
+         current: CurrentUser = Depends(require_permissions("shipment.manage_jp")), db: Session = Depends(get_db),
+         ctx: RequestContext = Depends(get_request_context)):
+    """Japan side: goods for this purchase line leave Japan (now in transit, not sellable)."""
+    move = purchasing.ship_line(db, actor_id=current.id, line_id=line_id, qty=body.qty, shipped_on=body.on_date,
+                                idempotency_key=idempotency_key, ctx=ctx)
+    db.commit()
+    return {"movement_id": move.id, **purchasing.line_status(db, line_id)}
 
 
 @router.post("/purchase-lines/{line_id}/receive", status_code=201)
-def receive(line_id: int, body: ReceiveIn,
-            idempotency_key: str = Header(alias="Idempotency-Key", min_length=8, max_length=64, pattern=r"^[A-Za-z0-9-]+$"),
-            current: CurrentUser = Depends(require_permissions("inventory.adjust_jp")), db: Session = Depends(get_db),
+def receive(line_id: int, body: LineActionIn, idempotency_key: str = IdemKey,
+            current: CurrentUser = Depends(require_permissions("shipment.receive_us")), db: Session = Depends(get_db),
             ctx: RequestContext = Depends(get_request_context)):
-    move = purchasing.receive_line(db, actor_id=current.id, line_id=line_id, qty=body.qty,
-                                   received_on=body.received_on, idempotency_key=idempotency_key, ctx=ctx)
+    """US side: goods arrived; they become sellable US stock."""
+    moves = purchasing.receive_line_in_us(db, actor_id=current.id, line_id=line_id, qty=body.qty,
+                                          received_on=body.on_date, idempotency_key=idempotency_key, ctx=ctx)
     db.commit()
-    return {"movement_id": move.id, "received_total": purchasing.received_qty(db, line_id)}
+    return {"movement_ids": [m.id for m in moves], **purchasing.line_status(db, line_id)}
+
+
+@router.get("/settings/business")
+def business_settings(_: CurrentUser = Depends(get_active_user), db: Session = Depends(get_db)):
+    from app.core.config import get_settings
+    return {"japan_warehouse_enabled": get_settings().japan_warehouse_enabled,
+            "lead_time_days": purchasing.lead_time_days(db)}

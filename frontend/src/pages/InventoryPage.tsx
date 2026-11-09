@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api";
 import { useAuth } from "../auth";
-import { ErrorBox, Loading, Qty, fmtDate, fmtInt, fmtUsd, useDebounced, useSkus } from "../components/ui";
+import { ErrorBox, Loading, Qty, fmtDate, fmtInt, fmtUsd, useBusinessSettings, useDebounced, useSkus } from "../components/ui";
 import type { Category } from "../types";
 
 interface SummaryLoc {
@@ -18,6 +18,7 @@ interface SummaryLoc {
 
 export default function InventoryPage() {
   const { can, me } = useAuth();
+  const { japanEnabled } = useBusinessSettings();
   const nav = useNavigate();
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("");
@@ -56,8 +57,8 @@ export default function InventoryPage() {
         )}
       </div>
 
-      <div className="tiles">
-        {tile("JP_MAIN", "日本倉")}
+      <div className="tiles" style={japanEnabled ? undefined : { gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }}>
+        {japanEnabled && tile("JP_MAIN", "日本倉")}
         {tile("IN_TRANSIT", "運送中（不可銷售）")}
         {tile("US_MAIN", "美國倉")}
         <div className="tile">
@@ -94,7 +95,7 @@ export default function InventoryPage() {
               <thead>
                 <tr>
                   <th>商品</th>
-                  <th className="num">日本倉</th>
+                  {japanEnabled && <th className="num">日本倉</th>}
                   <th className="num">運送中</th>
                   <th className="num">美國倉</th>
                   <th className="num">已預留</th>
@@ -118,7 +119,7 @@ export default function InventoryPage() {
                         </div>
                       </div>
                     </td>
-                    <td className="num" data-label="日本倉"><Qty n={s.jp_on_hand} /></td>
+                    {japanEnabled && <td className="num" data-label="日本倉"><Qty n={s.jp_on_hand} /></td>}
                     <td className="num" data-label="運送中"><Qty n={s.in_transit} kind="transit" /></td>
                     <td className="num" data-label="美國倉"><Qty n={s.us_on_hand} /></td>
                     <td className="num" data-label="已預留"><Qty n={s.us_reserved} /></td>

@@ -41,6 +41,9 @@ def location(db: Session, code: str) -> Location:
 
 
 def require_location_permission(code: str, permissions: set[str]) -> None:
+    from app.core.config import get_settings
+    if code == "JP_MAIN" and not get_settings().japan_warehouse_enabled:
+        raise AppError("japan_warehouse_disabled", "The Japan warehouse is not used (goods ship directly to the US)", 422)
     perm = STOCK_LOCATIONS.get(code)
     if perm is None:
         raise AppError("location_not_adjustable", "Stock can only be adjusted in JP_MAIN or US_MAIN", 422)
@@ -68,11 +71,13 @@ class Allocation:
 
 def post_movement(db: Session, *, sku_id: int, lot_id: int, movement_type: str, from_code: str, to_code: str,
                   qty: int, key: str, ref_type: str | None = None, ref_id: int | None = None,
-                  actor_id: int | None = None, note: str | None = None) -> InventoryMovement:
+                  actor_id: int | None = None, note: str | None = None,
+                  occurred_at: datetime | None = None) -> InventoryMovement:
     m = InventoryMovement(
         sku_id=sku_id, lot_id=lot_id, movement_type=movement_type,
         from_location_id=location(db, from_code).id, to_location_id=location(db, to_code).id,
         qty=qty, idempotency_key=key, ref_type=ref_type, ref_id=ref_id, created_by=actor_id, note=note,
+        **({"occurred_at": occurred_at} if occurred_at else {}),
     )
     db.add(m)
     db.flush()  # triggers validate direction and update balances here

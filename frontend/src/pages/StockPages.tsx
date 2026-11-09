@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, newIdempotencyKey } from "../api";
 import { useAuth } from "../auth";
-import { ErrorBox, Field, Loading, SkuPicker, fmtDateTime, fmtInt } from "../components/ui";
+import { ErrorBox, Field, Loading, SkuPicker, fmtDateTime, fmtInt, useBusinessSettings } from "../components/ui";
 import { LOCATION_LABEL, type StockCount } from "../types";
 
 type Op = "opening" | "increase" | "decrease" | "damage";
@@ -11,14 +11,16 @@ const OP_LABEL: Record<Op, string> = { opening: "期初庫存", increase: "調�
 
 function useAllowedLocations() {
   const { can } = useAuth();
-  return [can("inventory.adjust_jp") && "JP_MAIN", can("inventory.adjust_us") && "US_MAIN"].filter(Boolean) as string[];
+  const { japanEnabled } = useBusinessSettings();
+  return [japanEnabled && can("inventory.adjust_jp") && "JP_MAIN", can("inventory.adjust_us") && "US_MAIN"].filter(Boolean) as string[];
 }
 
 export function StockOperationsPage() {
   const qc = useQueryClient();
   const locations = useAllowedLocations();
   const [op, setOp] = useState<Op>("opening");
-  const [loc, setLoc] = useState(locations[0] ?? "");
+  const [locChoice, setLoc] = useState("");
+  const loc = locations.includes(locChoice) ? locChoice : locations[0] ?? "";
   const [reason, setReason] = useState("");
   const [lines, setLines] = useState<{ sku_id: number | null; qty: string; cost: string }[]>([{ sku_id: null, qty: "", cost: "" }]);
   // One key per form submission attempt: a retry/double tap re-sends the same key and cannot double-post.
@@ -64,7 +66,7 @@ export function StockOperationsPage() {
           </Field>
         </div>
         <div className="alert info small">
-          {op === "opening" && "開始使用系統時登記現有庫存。每一行會建立一個成本批次，需要輸入單位成本（USD）。採購入庫請在 Phase 4 的成本匯入完成。"}
+          {op === "opening" && "開始使用系統時登記現有庫存。每一行會建立一個成本批次，需要輸入單位成本（USD）。之後的採購請用「試算表匯入」與「採購批次」的寄出／簽收。"}
           {op === "increase" && "盤點多出、找到的商品。會併入該 SKU 最新批次的成本；若從未有過庫存，需要輸入單位成本。"}
           {op === "decrease" && "盤點短少等原因減少庫存，依先進先出從最早的批次扣除。"}
           {op === "damage" && "損壞、無法銷售的商品，移至「遺失/損壞」，依先進先出扣除。"}
@@ -108,7 +110,8 @@ const STATUS_LABEL: Record<string, [string, string]> = {
 export function StockCountsPage() {
   const nav = useNavigate();
   const locations = useAllowedLocations();
-  const [loc, setLoc] = useState(locations[0] ?? "");
+  const [locChoice, setLoc] = useState("");
+  const loc = locations.includes(locChoice) ? locChoice : locations[0] ?? "";
   const list = useQuery({ queryKey: ["counts"], queryFn: () => api<StockCount[]>("/inventory/stock-counts") });
   const create = useMutation({
     mutationFn: () => api<StockCount>("/inventory/stock-counts", { body: { location_code: loc } }),

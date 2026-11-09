@@ -1,5 +1,5 @@
 // Phase 4 browser test: cost-sheet import wizard + receiving into the Japan warehouse.
-// Needs: fresh dev DB, server on :8000, a user with roles tw_manager + jp_inventory
+// Needs: fresh dev DB, server on :8000, a user with roles tw_manager + jp_inventory + us_live_ops
 // (E2E_USER / E2E_PASSWORD), the owner's template (E2E_TEMPLATE) and a filled copy (E2E_FILLED).
 const { chromium, devices } = require("playwright");
 const path = require("path");
@@ -72,38 +72,50 @@ async function upload(page, file, typeLabel = "採購成本") {
   await page.goto(BASE + "/");
   await page.getByText("PK151-BOX-JP").waitFor();
   let row = (await page.locator("tr", { hasText: "PK151-BOX-JP" }).innerText()).replace(/\s+/g, " ");
-  if (!/PK151-BOX-JP .* 0 0 0 0 0/.test(row)) throw new Error("cost import must not create stock: " + row);
+  if (!/\(JP\) 0 0 0 0 \$0.00/.test(row)) throw new Error("cost import must not create stock: " + row);
   step("no stock created by importing costs");
 
-  // 5. Receive 10 of 24 boxes into Japan (phone)
+  // 5. Phone: ship 10 of 24 boxes from Japan -> in transit (not sellable), then receive in the US
   const phoneCtx = await browser.newContext({ ...devices["iPhone 13"] });
   const phone = await phoneCtx.newPage();
   phone.on("pageerror", (e) => errors.push(e.message));
   await login(phone);
   await phone.goto(BASE + "/purchasing");
   await phone.getByText("B-2026-1101").click();
-  await phone.getByLabel("PK151-BOX-JP 入庫數量").fill("10");
-  await phone.getByLabel("到貨日期").first().fill("2026-11-05");
-  await phone.getByRole("button", { name: "入庫到日本倉" }).first().click();
-  await phone.getByText("已入庫 10 / 24").waitFor();
+  await phone.getByLabel("PK151-BOX-JP 寄出數量").fill("10");
+  await phone.getByLabel("寄出日期").first().fill("2026-11-05");
+  await phone.getByRole("button", { name: "從日本寄出" }).first().click();
+  await phone.getByText("運送中 10 件：2026/11/05 寄出，預計 2026/11/14 到美國").waitFor();
+  step("shipped 10 from Japan on phone: in transit, ETA = ship date + 9 days");
+
+  await page.goto(BASE + "/");
+  await page.reload();
+  await page.getByText("PK151-BOX-JP").waitFor();
+  row = (await page.locator("tr", { hasText: "PK151-BOX-JP" }).innerText()).replace(/\s+/g, " ");
+  if (!/\(JP\) 10 0 0 0 /.test(row)) throw new Error("in-transit stock must not be sellable: " + row);
+  if (await page.getByRole("columnheader", { name: "日本倉" }).count()) throw new Error("Japan warehouse column should be hidden");
+  step("inventory: 10 in transit, US 0, sellable 0; no Japan warehouse column");
+
+  await phone.getByLabel("PK151-BOX-JP 簽收數量").fill("10");
+  await phone.getByLabel("簽收日期").first().fill("2026-11-09");
+  await phone.getByRole("button", { name: "美國簽收" }).first().click();
+  await phone.getByText("美國已收 10").waitFor();
   await phone.waitForTimeout(300);
   await phone.screenshot({ path: path.join(OUT, "p4-02-batch-phone.png"), fullPage: true });
   const overflow = await phone.evaluate(() => document.documentElement.scrollWidth - innerWidth);
   if (overflow > 1) throw new Error("horizontal overflow on phone: " + overflow);
-  step("received 10/24 on phone; no horizontal scrolling");
+  step("received 10 in the US on phone; no horizontal scrolling");
 
-  // 6. Inventory: JP 10 boxes. Landed cost per box:
+  // 6. Inventory: US 10 at landed cost.
   //    24 x 6800 / 150 = 1088.00 ; shipping (2775 + 6300) JPY / 150 = 60.50 ; duty 12 USD -> 1160.50 / 24 = 48.354167
   //    10 boxes -> $483.54
-  await page.goto(BASE + "/");
   await page.reload();
-  await page.waitForTimeout(2000);
   await page.getByText("PK151-BOX-JP").waitFor();
   row = (await page.locator("tr", { hasText: "PK151-BOX-JP" }).innerText()).replace(/\s+/g, " ");
   console.log("  inventory row:", row);
-  if (!row.includes("$483.54") || !/JP\)? .*10 0 0 0 0/.test(row)) throw new Error("unexpected inventory row");
+  if (!row.includes("$483.54") || !/\(JP\) 0 10 0 10 /.test(row)) throw new Error("unexpected inventory row");
   await page.screenshot({ path: path.join(OUT, "p4-03-inventory.png") });
-  step("Japan stock 10, valued at the landed cost ($483.54)");
+  step("US stock 10 sellable, valued at the landed cost ($483.54)");
 
   await browser.close();
   if (errors.length) { console.log("PAGE ERRORS:\n" + errors.join("\n")); process.exit(1); }

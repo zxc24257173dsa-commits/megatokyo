@@ -46,6 +46,16 @@ export function Icon({ name }: { name: keyof typeof paths | string }) {
   );
 }
 
+// ---------- business settings ----------
+export function useBusinessSettings() {
+  const q = useQuery({
+    queryKey: ["business-settings"],
+    queryFn: () => api<{ japan_warehouse_enabled: boolean; lead_time_days: number }>("/settings/business"),
+    staleTime: 5 * 60_000,
+  });
+  return { japanEnabled: q.data?.japan_warehouse_enabled ?? false, leadTime: q.data?.lead_time_days ?? 9, loaded: !!q.data };
+}
+
 // ---------- SKU picker ----------
 export function useSkus(params: Record<string, any> = {}) {
   return useQuery({ queryKey: ["skus", params], queryFn: () => api<SkuRow[]>("/skus", { params }) });

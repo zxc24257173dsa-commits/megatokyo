@@ -16,6 +16,7 @@ os.environ["ERP_LOG_JSON"] = "false"
 os.environ["ERP_COOKIE_SECURE"] = "false"  # TestClient talks plain http
 import tempfile  # noqa: E402
 os.environ["ERP_STORAGE_DIR"] = tempfile.mkdtemp(prefix="erp-test-storage-")
+os.environ["ERP_JAPAN_WAREHOUSE_ENABLED"] = "true"  # Phase 3 tests exercise JP_MAIN; tests for "off" patch it
 
 from alembic import command  # noqa: E402
 from alembic.config import Config  # noqa: E402
