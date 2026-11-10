@@ -32,7 +32,7 @@ from app.models.finance import FinancialEntry
 from app.models.integration import ExternalRawRecord
 from app.models.inventory import InventoryReservation
 from app.models.sales import SHIPPED_STATUSES, CogsAllocation, Livestream, SalesOrder, SalesOrderLine, SalesShipment
-from app.services import inventory
+from app.services import inventory, ledger
 
 PLATFORM = "whatnot"
 PAID = ("pending_fulfillment", "completed")
@@ -76,6 +76,9 @@ def _entry(db: Session, key: str, **fields) -> FinancialEntry:
     existing = db.scalar(select(FinancialEntry).where(FinancialEntry.idempotency_key == key))
     if existing:
         return existing
+    fields["entry_date"], moved = ledger.booking_date(db, fields["entry_date"])
+    if moved:
+        fields["memo"] = "；".join(x for x in (fields.get("memo"), moved) if x)
     e = FinancialEntry(idempotency_key=key, fx_rate=Decimal(1), currency_orig="USD", **fields)
     e.amount_base = e.amount_orig
     db.add(e)
@@ -87,12 +90,13 @@ def _reverse(db: Session, key: str, when: datetime, source_type: str) -> None:
     orig = db.scalar(select(FinancialEntry).where(FinancialEntry.idempotency_key == key))
     if orig is None or db.scalar(select(FinancialEntry.id).where(FinancialEntry.reversal_of_id == orig.id)):
         return
+    day, moved = ledger.booking_date(db, biz_date(when))
     db.add(FinancialEntry(
-        idempotency_key=f"{key}:reversal", entry_date=biz_date(when), occurred_at=when, entry_type=orig.entry_type,
+        idempotency_key=f"{key}:reversal", entry_date=day, occurred_at=when, entry_type=orig.entry_type,
         amount_orig=-orig.amount_orig, currency_orig=orig.currency_orig, fx_rate=orig.fx_rate,
         amount_base=-orig.amount_base, sales_order_id=orig.sales_order_id, order_line_id=orig.order_line_id,
         livestream_id=orig.livestream_id, sku_id=orig.sku_id, source_type=source_type, source_ref=orig.source_ref,
-        reversal_of_id=orig.id, memo="order cancelled"))
+        reversal_of_id=orig.id, memo="；".join(x for x in ("order cancelled", moved) if x)))
     db.flush()
 
 

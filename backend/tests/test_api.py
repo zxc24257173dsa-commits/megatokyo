@@ -16,7 +16,7 @@ def test_liveness(client):
 def test_readiness_reports_schema_version(client):
     r = client.get("/api/v1/readyz")
     assert r.status_code == 200
-    assert r.json() == {"status": "ok", "database": "ok", "schema_version": "0011"}
+    assert r.json() == {"status": "ok", "database": "ok", "schema_version": "0012"}
 
 
 def test_error_envelope_and_request_id(client):

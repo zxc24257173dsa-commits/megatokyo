@@ -96,11 +96,25 @@ class Payout(IdMixin, CreatedMixin, Base):
     )
 
 
+class ExpenseCategory(Base):
+    """Operating expense categories (configurable; seeded with common ones)."""
+
+    __tablename__ = "expense_categories"
+
+    code: Mapped[str] = mapped_column(String(60), primary_key=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    is_active: Mapped[bool] = mapped_column(nullable=False, server_default="true")
+
+
 class OperatingExpense(IdMixin, CreatedMixin, Base):
+    """One operating expense (rent, staff, packaging...). Booked as an operating_expense ledger entry.
+    Never edited: a mistake is voided (reversal entry) and entered again."""
+
     __tablename__ = "operating_expenses"
 
     expense_date: Mapped[date] = mapped_column(Date, nullable=False)
-    category: Mapped[str] = mapped_column(String(60), nullable=False)
+    category: Mapped[str] = mapped_column(ForeignKey("expense_categories.code"), nullable=False)
     amount_orig: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
     currency: Mapped[str] = mapped_column(ForeignKey("currencies.code"), nullable=False)
     fx_rate: Mapped[Decimal] = mapped_column(Numeric(18, 8), nullable=False)
@@ -110,10 +124,20 @@ class OperatingExpense(IdMixin, CreatedMixin, Base):
     receipt_storage_key: Mapped[str | None] = mapped_column(Text)
     financial_entry_id: Mapped[int | None] = mapped_column(ForeignKey("financial_entries.id"), unique=True)
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    fx_quote: Mapped[Decimal | None] = mapped_column(Numeric(18, 6))  # as entered: 1 USD = fx_quote <currency>
+    vendor: Mapped[str | None] = mapped_column(String(120))
+    receipt_content_type: Mapped[str | None] = mapped_column(String(60))
+    idempotency_key: Mapped[str | None] = mapped_column(String(200), unique=True)
+    voided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    voided_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    void_reason: Mapped[str | None] = mapped_column(Text)
+    void_entry_id: Mapped[int | None] = mapped_column(ForeignKey("financial_entries.id"), unique=True)
 
     __table_args__ = (
         CheckConstraint("amount_orig > 0 AND amount_base > 0", name="amount_positive"),
         CheckConstraint("fx_rate > 0", name="fx_positive"),
+        CheckConstraint("(voided_at IS NULL) = (void_entry_id IS NULL)", name="void_consistent"),
+        Index("ix_operating_expenses_date", "expense_date"),
     )
 
 

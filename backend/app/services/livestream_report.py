@@ -35,9 +35,9 @@ GROUPS = {
     "revenue": "sales", "sales_discount": "discounts", "refund": "refunds", "refund_adjustment": "refunds",
     "platform_fee": "commission", "payment_processing_fee": "processing", "shipping_cost": "shipping",
     "shipping_adjustment": "shipping", "cogs": "cogs", "cogs_adjustment": "cogs", "other_income": "other",
-    "shipping_income": "other", "other_expense": "other", "operating_expense": "other",
+    "shipping_income": "other", "other_expense": "other", "operating_expense": "opex",
 }
-LINES = ("sales", "discounts", "refunds", "commission", "processing", "shipping", "cogs", "other")
+LINES = ("sales", "discounts", "refunds", "commission", "processing", "shipping", "cogs", "other")  # -> gross profit
 PAID = ("pending_fulfillment", "completed")
 
 # entries -> show, through the order when there is one
@@ -61,8 +61,10 @@ def _summary(b: dict[str, Decimal]) -> dict:
     net_sales = (b.get("sales") or ZERO) + (b.get("discounts") or ZERO) + (b.get("refunds") or ZERO)
     fees = sum((b.get(k) or ZERO) for k in ("commission", "processing", "shipping"))
     profit = sum((b.get(k) or ZERO) for k in LINES)
+    opex = b.get("opex") or ZERO  # expenses entered for this show (host fee...), Phase 7
     out.update(net_sales=_f(net_sales), platform_costs=_f(fees), gross_profit=_f(profit),
-               margin_pct=(float(round(profit / net_sales * 100, 1)) if net_sales > 0 else None))
+               margin_pct=(float(round(profit / net_sales * 100, 1)) if net_sales > 0 else None),
+               opex=_f(opex), net_profit=_f(profit + opex))
     return out
 
 
