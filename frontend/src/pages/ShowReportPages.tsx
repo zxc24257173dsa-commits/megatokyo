@@ -19,6 +19,8 @@ interface Summary {
   platform_costs: number;
   gross_profit: number;
   margin_pct: number | null;
+  opex?: number;
+  net_profit?: number;
 }
 
 interface Coverage {
@@ -133,7 +135,7 @@ export function ShowReportsPage() {
             <div className="tile"><div className="label">淨銷售額</div><div className="value">{money(total.net)}</div><div className="sub">{rows.length} 場・{fmtInt(total.orders)} 筆已付款訂單</div></div>
             <div className="tile"><div className="label">Whatnot 費用</div><div className="value">{money(total.fees)}</div><div className="sub">佣金、手續費、賣家運費</div></div>
             <div className="tile"><div className="label">商品成本</div><div className="value">{money(total.cogs)}</div><div className="sub">已出貨的部分</div></div>
-            <div className="tile"><div className="label">毛利</div><div className="value">{money(total.gp)}</div><div className="sub">{incomplete ? `${incomplete} 場數字尚未完整` : "營運費用在 Phase 7 扣除"}</div></div>
+            <div className="tile"><div className="label">毛利</div><div className="value">{money(total.gp)}</div><div className="sub">{incomplete ? `${incomplete} 場數字尚未完整` : "營運費用見「損益表」"}</div></div>
           </div>
         )}
         <ErrorBox error={q.error} />
@@ -228,9 +230,15 @@ export function ShowReportPage() {
                 </tr>
               ))}
               <tr style={{ borderTop: "2px solid var(--border)" }}>
-                <td><b>毛利</b><div className="small muted">尚未扣營運費用（Phase 7）</div></td>
+                <td><b>毛利</b><div className="small muted">{s.opex ? "扣營運費用前" : "全公司的營運費用見「損益表」"}</div></td>
                 <td className="num"><Money v={s.gross_profit} strong /></td>
               </tr>
+              {!!s.opex && (
+                <>
+                  <tr><td><div>這場的營運費用</div><div className="small muted">記錄費用時指定這場直播的（例如主播費）</div></td><td className="num"><Money v={s.opex} /></td></tr>
+                  <tr style={{ borderTop: "2px solid var(--border)" }}><td><b>淨利</b></td><td className="num"><Money v={s.net_profit} strong /></td></tr>
+                </>
+              )}
             </tbody>
           </table>
         </div>

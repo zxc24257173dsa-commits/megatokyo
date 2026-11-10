@@ -150,3 +150,20 @@ export function errorText(e: unknown): string {
   }
   return "連線失敗，請檢查網路後再試";
 }
+
+/** Download a file from an authenticated endpoint (e.g. a CSV export) and save it in the browser. */
+export async function downloadFile(path: string, params: Record<string, string>, filename: string): Promise<void> {
+  const url = new URL("/api/v1" + path, window.location.origin);
+  for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
+  let r = await fetch(url, { headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {}, credentials: "same-origin" });
+  if (r.status === 401 && (await refreshSession())) {
+    r = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` }, credentials: "same-origin" });
+  }
+  if (!r.ok) throw new ApiError(r.status, "download_failed", "下載失敗");
+  const blob = await r.blob();
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}

@@ -170,3 +170,7 @@ table.data th.num, table.data td.num { text-align: right; }
   table.data.responsive.compact td.lead { grid-column: 1 / -1; margin-bottom: 4px; }
   table.data.responsive.compact td.wide { grid-column: span 2; }
 }
+table.data.pnl tr.subtotal td { border-top: 2px solid var(--border); }
+table.data.pnl td:first-child, table.data.pnl th:first-child { position: sticky; left: 0; background: var(--surface); z-index: 1; }
+.tile .value { white-space: nowrap; }
+@media (max-width: 640px) { .tile .value { font-size: 21px; } }
