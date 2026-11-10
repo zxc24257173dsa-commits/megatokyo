@@ -8,7 +8,12 @@
 【第 1 步】安裝 Docker Desktop（只要做一次）
 ------------------------------------------------
 1. 用瀏覽器打開 https://www.docker.com/products/docker-desktop/
-2. 按「Download for Windows」，下載後打開安裝檔，全部按預設值，一直按下一步。
+2. 按「Download for Windows」下載。
+   下載後對安裝檔按右鍵 →「以系統管理員身分執行」（很重要，否則會出現
+   「Virtual Machine Platform ... not enabled」的錯誤）。
+   如果問要裝給誰，選「All-users installation」，其他按預設值。
+   還是失敗的話：在開始選單搜尋 PowerShell → 右鍵「以系統管理員身分執行」→
+   輸入 wsl --install 按 Enter → 跑完重新開機 → 再安裝一次 Docker Desktop。
 3. 裝好後「重新開機」。
 4. 開機後打開 Docker Desktop：
    - 同意使用條款（Accept）
