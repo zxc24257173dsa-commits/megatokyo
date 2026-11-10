@@ -1,0 +1,13 @@
+**/.venv
+**/node_modules
+**/__pycache__
+**/.pytest_cache
+**/*.pyc
+frontend/dist
+frontend/tsconfig.tsbuildinfo
+backend/var
+backend/tests
+e2e
+docs
+.git
+.env

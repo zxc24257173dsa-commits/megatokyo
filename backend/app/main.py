@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1 import (
-    auth, catalog, dashboard, finance, health, imports, inventory, logistics, replenishment, reports, users, whatnot,
+    auth, catalog, cron, dashboard, finance, health, imports, inventory, logistics, replenishment, reports, users, whatnot,
 )
 from app.core.config import get_settings
 from app.core.errors import AppError, register_exception_handlers
@@ -71,6 +71,7 @@ app.include_router(finance.router, prefix="/api/v1")
 app.include_router(logistics.router, prefix="/api/v1")
 app.include_router(replenishment.router, prefix="/api/v1")
 app.include_router(dashboard.router, prefix="/api/v1")
+app.include_router(cron.router, prefix="/api/v1")
 
 
 # ---------- single-page app (production) ----------

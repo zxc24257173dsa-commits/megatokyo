@@ -82,8 +82,14 @@ class Settings(BaseSettings):
     japan_warehouse_enabled: bool = False
 
     # ---- File storage (Phase 3) ----
-    # "local" stores under storage_dir (dev / single server). Phase 12 adds Google Cloud Storage.
-    storage_backend: Literal["local"] = "local"
+    # "local" stores under storage_dir (dev / single server); "gcs" = private Cloud Storage bucket (production).
+    storage_backend: Literal["local", "gcs"] = "local"
+    storage_bucket: str | None = None
+    # Shared secret Cloud Scheduler sends to /api/v1/internal/cron/* (Phase 12). Unset = those endpoints are off.
+    cron_secret: SecretStr | None = None
+    # Cloud Run (request-based billing) pauses work done after a response: run the "sync now" button inside the
+    # request, and leave webhook events to the every-minute scheduler instead of a background task.
+    inline_jobs: bool = False
     storage_dir: str = "var/storage"
     max_image_bytes: int = 5 * 1024 * 1024
     file_url_ttl_seconds: int = 3600
@@ -100,6 +106,14 @@ class Settings(BaseSettings):
                 raise ValueError("ERP_DATA_ENCRYPTION_KEY must be set in staging/production")
             if not self.cookie_secure:
                 raise ValueError("ERP_COOKIE_SECURE must be true in staging/production")
+            if self.storage_backend == "local":
+                raise ValueError("ERP_STORAGE_BACKEND must be gcs in staging/production (Cloud Run disks are wiped)")
+            if self.storage_backend == "gcs" and not self.storage_bucket:
+                raise ValueError("ERP_STORAGE_BUCKET must be set when ERP_STORAGE_BACKEND=gcs")
+            if self.public_base_url.startswith("http://"):
+                raise ValueError("ERP_PUBLIC_BASE_URL must be https in staging/production")
+            if self.cron_secret is not None and len(self.cron_secret.get_secret_value()) < 32:
+                raise ValueError("ERP_CRON_SECRET must be at least 32 characters")
         return self
 
 

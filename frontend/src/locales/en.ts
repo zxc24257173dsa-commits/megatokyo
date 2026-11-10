@@ -930,6 +930,8 @@ export const EN: Record<string, string> = {
   "最近的直播": "Recent shows",
   "Whatnot 最後同步：{0}（{1}）": "Last Whatnot sync: {0} ({1})",
   "介面語言": "Interface language",
+  "同步完成，結果在下方。": "Sync finished; the result is below.",
+  "同步中，請稍候…": "Syncing, please wait…",
 };
 
 // Text the server sends as {key, args} (e.g. replenishment notes). Not used as t("...") literals in the code.

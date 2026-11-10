@@ -1,7 +1,6 @@
 """/api/v1 catalog: categories, products, SKUs, bundles, images, signed file downloads."""
 from fastapi import APIRouter, Depends, File, Query, Response, UploadFile
 from pydantic import BaseModel, Field
-from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -192,7 +191,8 @@ def get_file(key: str, exp: int, sig: str):
     """Signed, expiring URL (no login header needed, so <img src> works)."""
     if not storage.verify_signature(key, exp, sig):
         raise AppError("not_found", "File not found or link expired", 404)
-    path = storage.path_for(key)
-    media = {"jpg": "image/jpeg", "png": "image/png", "webp": "image/webp"}.get(path.suffix.lstrip("."),
-                                                                             "application/octet-stream")
-    return FileResponse(path, media_type=media, headers={"Cache-Control": "private, max-age=3600"})
+    media = storage.content_type(key)
+    headers = {"Cache-Control": "private, max-age=3600", "X-Content-Type-Options": "nosniff"}
+    if media == "application/pdf":
+        headers["Content-Disposition"] = "inline"
+    return Response(storage.read(key), media_type=media, headers=headers)

@@ -1,0 +1,150 @@
+# Deploy Megatokyo ERP to Google Cloud Run (Tokyo). Run by hand (Actions > Deploy > Run workflow), never on every push.
+#
+# Needs repository variables (Settings > Secrets and variables > Actions > Variables), all printed by
+# deploy/gcp/bootstrap.sh - none of them is a secret:
+#   GCP_PROJECT, GCP_WIF_PROVIDER, GCP_SQL_CONNECTION, APP_URL
+#   GOOGLE_CLIENT_ID (optional until Google sign-in is set up)
+# Authentication: Workload Identity Federation (no service account keys anywhere).
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      create_admin_email:
+        description: "Create this Google account as the first admin (only if it doesn't exist yet). Leave empty to skip."
+        required: false
+        default: ""
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  REGION: asia-northeast1
+  SERVICE: megatokyo-erp
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: erp
+          POSTGRES_PASSWORD: erp_dev_pw
+          POSTGRES_DB: erp_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U erp" --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Backend tests
+        working-directory: backend
+        env:
+          ERP_TEST_DATABASE_URL: postgresql+psycopg://erp:erp_dev_pw@localhost:5432/erp_test
+        run: |
+          pip install -e ".[dev]"
+          python -m pytest -q -p no:warnings
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Frontend type check, translations, build
+        working-directory: frontend
+        run: |
+          npm ci --no-audit --no-fund
+          npm run i18n:check
+          npm run build
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: erp-deployer@${{ vars.GCP_PROJECT }}.iam.gserviceaccount.com
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Build image (Cloud Build)
+        id: build
+        run: |
+          IMAGE="${REGION}-docker.pkg.dev/${{ vars.GCP_PROJECT }}/megatokyo/erp:${GITHUB_SHA::12}"
+          gcloud builds submit --project "${{ vars.GCP_PROJECT }}" --region "$REGION" --tag "$IMAGE" .
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+
+      - name: Common settings
+        id: cfg
+        run: |
+          P="${{ vars.GCP_PROJECT }}"
+          echo "secrets=ERP_DATABASE_URL=erp-database-url:latest,ERP_JWT_SECRET=erp-jwt-secret:latest,ERP_DATA_ENCRYPTION_KEY=erp-data-key:latest,ERP_CRON_SECRET=erp-cron-secret:latest" >> "$GITHUB_OUTPUT"
+          ENV="ERP_ENV=production,ERP_STORAGE_BACKEND=gcs,ERP_STORAGE_BUCKET=${P}-megatokyo-files,ERP_PUBLIC_BASE_URL=${{ vars.APP_URL }}"
+          ENV="$ENV,ERP_DB_POOL_SIZE=5,ERP_DB_MAX_OVERFLOW=3,ERP_INLINE_JOBS=true,ERP_COOKIE_SECURE=true"
+          if [ -n "${{ vars.GOOGLE_CLIENT_ID }}" ]; then ENV="$ENV,ERP_GOOGLE_CLIENT_ID=${{ vars.GOOGLE_CLIENT_ID }}"; fi
+          echo "env=$ENV" >> "$GITHUB_OUTPUT"
+          SECRETS_EXTRA=""
+          if gcloud secrets describe erp-google-client-secret --project "$P" >/dev/null 2>&1; then
+            SECRETS_EXTRA=",ERP_GOOGLE_CLIENT_SECRET=erp-google-client-secret:latest"
+          fi
+          echo "secrets_extra=$SECRETS_EXTRA" >> "$GITHUB_OUTPUT"
+
+      - name: Database migrations (Cloud Run job)
+        run: |
+          gcloud run jobs deploy erp-migrate --project "${{ vars.GCP_PROJECT }}" --region "$REGION" \
+            --image "${{ steps.build.outputs.image }}" --command alembic --args upgrade,head \
+            --service-account "erp-runtime@${{ vars.GCP_PROJECT }}.iam.gserviceaccount.com" \
+            --set-cloudsql-instances "${{ vars.GCP_SQL_CONNECTION }}" \
+            --set-secrets "${{ steps.cfg.outputs.secrets }}" --set-env-vars "${{ steps.cfg.outputs.env }}" \
+            --max-retries 0 --task-timeout 900
+          gcloud run jobs execute erp-migrate --project "${{ vars.GCP_PROJECT }}" --region "$REGION" --wait
+
+      - name: First admin
+        if: ${{ github.event.inputs.create_admin_email != '' }}
+        run: |
+          gcloud run jobs deploy erp-create-admin --project "${{ vars.GCP_PROJECT }}" --region "$REGION" \
+            --image "${{ steps.build.outputs.image }}" --command python \
+            --args="-m,app.cli,create-admin,--email,${{ github.event.inputs.create_admin_email }},--name,Owner,--google-only,--if-missing" \
+            --service-account "erp-runtime@${{ vars.GCP_PROJECT }}.iam.gserviceaccount.com" \
+            --set-cloudsql-instances "${{ vars.GCP_SQL_CONNECTION }}" \
+            --set-secrets "${{ steps.cfg.outputs.secrets }}" --set-env-vars "${{ steps.cfg.outputs.env }}" --max-retries 0
+          gcloud run jobs execute erp-create-admin --project "${{ vars.GCP_PROJECT }}" --region "$REGION" --wait
+
+      - name: Deploy the app (Cloud Run service)
+        run: |
+          gcloud run deploy "$SERVICE" --project "${{ vars.GCP_PROJECT }}" --region "$REGION" \
+            --image "${{ steps.build.outputs.image }}" \
+            --service-account "erp-runtime@${{ vars.GCP_PROJECT }}.iam.gserviceaccount.com" \
+            --add-cloudsql-instances "${{ vars.GCP_SQL_CONNECTION }}" \
+            --set-secrets "${{ steps.cfg.outputs.secrets }}${{ steps.cfg.outputs.secrets_extra }}" \
+            --set-env-vars "${{ steps.cfg.outputs.env }}" \
+            --allow-unauthenticated --cpu 1 --memory 1Gi --min-instances 0 --max-instances 2 \
+            --concurrency 40 --timeout 900
+
+      - name: Scheduler (hourly Whatnot sync, webhook processing every minute)
+        run: |
+          P="${{ vars.GCP_PROJECT }}"
+          KEY="$(gcloud secrets versions access latest --secret erp-cron-secret --project "$P")"
+          echo "::add-mask::$KEY"
+          job() {  # name schedule path deadline
+            if gcloud scheduler jobs describe "$1" --project "$P" --location "$REGION" >/dev/null 2>&1; then op=update; else op=create; fi
+            gcloud scheduler jobs $op http "$1" --project "$P" --location "$REGION" --schedule "$2" \
+              --time-zone "America/New_York" --uri "${{ vars.APP_URL }}$3" --http-method POST \
+              --update-headers "X-Cron-Secret=$KEY" --attempt-deadline "$4" >/dev/null 2>&1 ||
+            gcloud scheduler jobs $op http "$1" --project "$P" --location "$REGION" --schedule "$2" \
+              --time-zone "America/New_York" --uri "${{ vars.APP_URL }}$3" --http-method POST \
+              --headers "X-Cron-Secret=$KEY" --attempt-deadline "$4" >/dev/null
+          }
+          job erp-whatnot-sync "7 * * * *" /api/v1/internal/cron/whatnot-sync 900s
+          job erp-webhooks "* * * * *" /api/v1/internal/cron/webhooks 120s
+
+      - name: Smoke test
+        run: |
+          curl -fsS "${{ vars.APP_URL }}/api/v1/health" | tee /dev/stderr | grep -q '"database":"ok"'

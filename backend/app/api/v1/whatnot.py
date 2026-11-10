@@ -107,8 +107,11 @@ def start_sync(body: SyncIn, tasks: BackgroundTasks, current: CurrentUser = Depe
     audit.record(db, action="integration.sync_requested", entity_type="integration", actor_id=current.id,
                  after={"days": body.days}, ctx=ctx)
     db.commit()
+    if get_settings().inline_jobs:
+        _run_sync_job(body.days)  # Cloud Run: finish inside the request (the browser waits)
+        return {"started": True, "finished": True}
     tasks.add_task(_run_sync_job, body.days)
-    return {"started": True}
+    return {"started": True, "finished": False}
 
 
 # ---------- webhook receiver (public; authenticated by signature) ----------
@@ -122,8 +125,9 @@ async def whatnot_webhook(request: Request, tasks: BackgroundTasks, db: Session 
         raise AppError("invalid_signature", "Invalid webhook signature", 401)
     if outcome in ("not_configured", "bad_payload"):
         raise AppError(outcome, "Webhook not accepted", 400)
-    if event_id:
+    if event_id and not get_settings().inline_jobs:
         tasks.add_task(_process_event_job, event_id)  # answer Whatnot within its 5 s timeout, work afterwards
+    # (on Cloud Run the every-minute scheduler call /internal/cron/webhooks processes it)
     return {"received": True, "duplicate": outcome == "duplicate"}
 
 

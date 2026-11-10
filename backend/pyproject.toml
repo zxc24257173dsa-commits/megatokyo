@@ -18,6 +18,7 @@ dependencies = [
     "httpx==0.28.*",
     "openpyxl==3.1.*",
     "defusedxml==0.7.*",
+    "google-cloud-storage==2.18.*",
 ]
 
 [project.optional-dependencies]

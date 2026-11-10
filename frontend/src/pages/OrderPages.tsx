@@ -348,8 +348,8 @@ export function WhatnotSettingsPage() {
     onSuccess: (r) => done(t("連線成功：{0}", [r.seller.name])),
   });
   const sync = useMutation({
-    mutationFn: () => api("/integrations/whatnot/sync", { body: { days: Number(days) } }),
-    onSuccess: () => done(t("同步已開始，完成後下方會出現結果。")),
+    mutationFn: () => api<{ finished: boolean }>("/integrations/whatnot/sync", { body: { days: Number(days) } }),
+    onSuccess: (r) => done(r.finished ? t("同步完成，結果在下方。") : t("同步已開始，完成後下方會出現結果。")),
   });
   if (st.isLoading) return <Loading />;
   if (!st.data) return <ErrorBox error={st.error} />;
@@ -388,7 +388,7 @@ export function WhatnotSettingsPage() {
             <select value={days} onChange={(e) => setDays(e.target.value)} style={{ width: "auto" }} aria-label={t("同步天數")}>
               {["1", "3", "7", "30"].map((d) => <option key={d} value={d}>{t("最近")} {d} {t("天")}</option>)}
             </select>
-            <button className="btn primary" disabled={!s.token_source || sync.isPending} onClick={() => sync.mutate()}>{t("立即同步")}</button>
+            <button className="btn primary" disabled={!s.token_source || sync.isPending} onClick={() => sync.mutate()}>{sync.isPending ? t("同步中，請稍候…") : t("立即同步")}</button>
           </div>
           <table className="data" style={{ marginTop: 12 }}>
             <thead><tr><th>{t("開始")}</th><th>{t("結果")}</th><th>{t("內容")}</th></tr></thead>

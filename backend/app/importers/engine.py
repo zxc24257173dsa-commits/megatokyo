@@ -44,7 +44,7 @@ def _header_signature(headers: list) -> str:
 
 
 def _load_sheets(job: ImportJob) -> list[reader.Sheet]:
-    return reader.read(job.filename, storage.path_for(job.storage_key).read_bytes())
+    return reader.read(job.filename, storage.read(job.storage_key))
 
 
 def create_job(db: Session, *, actor_id: int, import_type: str, filename: str, data: bytes,

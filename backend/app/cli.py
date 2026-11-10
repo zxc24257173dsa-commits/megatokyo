@@ -24,6 +24,13 @@ def _read_password(from_stdin: bool) -> str:
 
 
 def create_admin(args) -> int:
+    if args.if_missing:
+        from sqlalchemy import func, select
+        from app.models.auth import User
+        with SessionLocal() as db:
+            if db.scalar(select(User.id).where(func.lower(User.email) == args.email.lower())):
+                print(f"{args.email} already exists; nothing to do.")
+                return 0
     password = None if args.google_only else _read_password(args.password_stdin)
     with SessionLocal() as db:
         try:
@@ -51,6 +58,7 @@ def main(argv=None) -> int:
     p.add_argument("--timezone", default="America/New_York")
     p.add_argument("--password-stdin", action="store_true")
     p.add_argument("--google-only", action="store_true", help="No password; sign in with Google only")
+    p.add_argument("--if-missing", action="store_true", help="Do nothing (exit 0) if this email already has an account")
     p.set_defaults(func=create_admin)
     args = parser.parse_args(argv)
     return args.func(args)
