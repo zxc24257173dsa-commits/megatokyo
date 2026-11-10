@@ -40,6 +40,7 @@ const paths: Record<string, string> = {
   link: "M10 13a5 5 0 007.5.5l3-3a5 5 0 00-7-7l-1.7 1.7M14 11a5 5 0 00-7.5-.5l-3 3a5 5 0 007 7l1.7-1.7",
   chart: "M3 3v18h18M7 15l4-4 3 3 6-6M20 8v4h-4",
   wallet: "M3 7a2 2 0 012-2h13v4M3 7v11a2 2 0 002 2h15V9H5a2 2 0 01-2-2zM16 14h.01",
+  trend: "M23 6l-9.5 9.5-5-5L1 18M17 6h6v6",
   upload: "M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12",
 };
 export function Icon({ name }: { name: keyof typeof paths | string }) {

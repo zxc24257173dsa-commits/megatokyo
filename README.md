@@ -10,6 +10,7 @@
 - Whatnot 訂單同步、拆盒：[`docs/05-whatnot-orders.md`](docs/05-whatnot-orders.md)
 - 單場直播損益、Whatnot 財務報表：[`docs/06-show-pnl.md`](docs/06-show-pnl.md)
 - 損益表、營運費用、月結：[`docs/07-pnl-and-expenses.md`](docs/07-pnl-and-expenses.md)
+- 銷售趨勢、商品動向與庫存：[`docs/08-sales-trends.md`](docs/08-sales-trends.md)
 
 ## 目前進度
 
