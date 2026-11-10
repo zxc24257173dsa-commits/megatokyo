@@ -1,0 +1,109 @@
+# Megatokyo ERP on one computer (Windows / Mac with Docker Desktop). Started by 啟動.bat (install.ps1).
+# Secrets live in selfhost/.env (generated on first start, never committed).
+#
+#   db         PostgreSQL 16 (data in a Docker volume)
+#   app        the ERP (web + API) on http://localhost:8080 (this computer only)
+#   scheduler  Whatnot sync every hour, Whatnot notifications every minute
+#   backup     database + uploaded files every day into selfhost/backups (kept 30 days)
+#   tunnel     a free https address (Cloudflare) so colleagues anywhere can open the ERP
+name: megatokyo
+
+x-app-env: &app-env
+  ERP_ENV: production
+  ERP_SINGLE_SERVER: "true"
+  ERP_STORAGE_BACKEND: local
+  ERP_STORAGE_DIR: /data/files
+  ERP_DATABASE_URL: postgresql+psycopg://erp:${POSTGRES_PASSWORD}@db:5432/erp
+  ERP_JWT_SECRET: ${ERP_JWT_SECRET}
+  ERP_DATA_ENCRYPTION_KEY: ${ERP_DATA_ENCRYPTION_KEY}
+  ERP_CRON_SECRET: ${ERP_CRON_SECRET}
+  ERP_PUBLIC_BASE_URL: ${ERP_PUBLIC_BASE_URL:-https://localhost}
+  ERP_COOKIE_SECURE: "true"
+  ERP_DB_POOL_SIZE: "5"
+
+services:
+  db:
+    image: mirror.gcr.io/library/postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: erp
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: erp
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U erp -d erp"]
+      interval: 5s
+      retries: 20
+
+  app:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: megatokyo-erp:local
+    restart: unless-stopped
+    environment: *app-env
+    ports:
+      - "127.0.0.1:8080:8080"   # this computer only; colleagues use the tunnel address
+    volumes:
+      - ./data/files:/data/files
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8080/healthz', timeout=5)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  scheduler:
+    image: megatokyo-erp:local
+    restart: unless-stopped
+    command: ["python", "-m", "app.scheduler"]
+    environment:
+      ERP_APP_URL: http://app:8080
+      ERP_CRON_SECRET: ${ERP_CRON_SECRET}
+    depends_on:
+      app:
+        condition: service_healthy
+
+  backup:
+    image: mirror.gcr.io/library/postgres:16
+    restart: unless-stopped
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      FIRST_BACKUP_DELAY: ${FIRST_BACKUP_DELAY:-300}
+    volumes:
+      - ./backups:/backups
+      - ./data/files:/files:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        sleep "$$FIRST_BACKUP_DELAY"
+        while true; do
+          d=$$(date +%Y%m%d-%H%M)
+          if pg_dump -Fc -h db -U erp erp > /backups/.db.tmp; then
+            mv /backups/.db.tmp /backups/megatokyo-db-$$d.dump
+            tar -czf /backups/.files.tmp -C /files . && mv /backups/.files.tmp /backups/megatokyo-files-$$d.tar.gz
+            echo "backup ok $$d"
+          else
+            echo "backup FAILED $$d"
+          fi
+          find /backups -name 'megatokyo-*' -mtime +30 -delete
+          sleep 86400
+        done
+    depends_on:
+      db:
+        condition: service_healthy
+
+  tunnel:
+    image: mirror.gcr.io/cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: ["tunnel", "--no-autoupdate", "--url", "http://app:8080"]
+    depends_on:
+      app:
+        condition: service_healthy
+
+volumes:
+  pgdata:

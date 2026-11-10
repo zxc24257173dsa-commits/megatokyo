@@ -90,6 +90,9 @@ class Settings(BaseSettings):
     # Cloud Run (request-based billing) pauses work done after a response: run the "sync now" button inside the
     # request, and leave webhook events to the every-minute scheduler instead of a background task.
     inline_jobs: bool = False
+    # One computer runs everything (self-hosted, docker compose): files may stay on its disk, which is kept
+    # (and backed up daily) - unlike a Cloud Run disk.
+    single_server: bool = False
     storage_dir: str = "var/storage"
     max_image_bytes: int = 5 * 1024 * 1024
     file_url_ttl_seconds: int = 3600
@@ -106,8 +109,9 @@ class Settings(BaseSettings):
                 raise ValueError("ERP_DATA_ENCRYPTION_KEY must be set in staging/production")
             if not self.cookie_secure:
                 raise ValueError("ERP_COOKIE_SECURE must be true in staging/production")
-            if self.storage_backend == "local":
-                raise ValueError("ERP_STORAGE_BACKEND must be gcs in staging/production (Cloud Run disks are wiped)")
+            if self.storage_backend == "local" and not self.single_server:
+                raise ValueError("ERP_STORAGE_BACKEND must be gcs in staging/production (Cloud Run disks are wiped); "
+                                 "set ERP_SINGLE_SERVER=true only when one computer with a kept disk runs everything")
             if self.storage_backend == "gcs" and not self.storage_bucket:
                 raise ValueError("ERP_STORAGE_BUCKET must be set when ERP_STORAGE_BACKEND=gcs")
             if self.public_base_url.startswith("http://"):

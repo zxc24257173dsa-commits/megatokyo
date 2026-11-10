@@ -105,6 +105,7 @@ def test_production_settings_refuse_unsafe_values():
                 storage_backend="gcs", storage_bucket="b", public_base_url="https://erp.example.com",
                 cron_secret=SECRET, cookie_secure=True)
     Settings(**good)
+    Settings(**{**good, "storage_backend": "local", "single_server": True})  # self-hosted: one computer, kept disk
     for bad in ({"storage_backend": "local"}, {"storage_bucket": None}, {"public_base_url": "http://x"},
                 {"cron_secret": "short"}, {"cookie_secure": False}, {"jwt_secret": Settings().jwt_secret}):
         with pytest.raises(ValidationError):

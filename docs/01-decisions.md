@@ -13,7 +13,7 @@
 | 9 | 安全庫存 | **依銷量波動計算**：z × σ(日銷量) × √(前置天數)，預設 z = 1.65（約 95% 服務水準） | `replenishment_settings.safety_stock_method = 'volatility'` |
 | 10 | Whatnot API | **已取得權限** | Phase 5 串接；Token 只存在加密欄位/Secret Manager，不得貼在對話或程式碼中 |
 | 11 | 規模 | SKU 約 50–100；每月訂單量大 | 索引、彙總表已設計；`inventory_movements`/`financial_entries` 未來可依年分區 |
-| 12 | 部署 | GCP 東京區 | Phase 12 |
+| 12 | 部署 | 先裝在業主自己的 Windows 電腦（免費）；不順再租主機（GCP 已不採用） | docs/12 |
 | 13 | 程式碼儲存庫 | GitHub `megatokyo`（私人） | 已推送 |
 | 14 | 登入方式 | **Google 帳號一鍵登入**；密碼＋驗證碼為備用 | docs/02 |
 | 15 | 成本試算表 | 匯率寫「1 USD = 150 JPY」；運費日幣、關稅 USD；一個批次可含多個 SKU | docs/04 |

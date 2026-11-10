@@ -147,4 +147,4 @@ jobs:
 
       - name: Smoke test
         run: |
-          curl -fsS "${{ vars.APP_URL }}/api/v1/health" | tee /dev/stderr | grep -q '"database":"ok"'
+          curl -fsS "${{ vars.APP_URL }}/api/v1/readyz" | tee /dev/stderr | grep -q '"database":"ok"'
