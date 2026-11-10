@@ -5,6 +5,7 @@ import { api } from "../api";
 import { useAuth } from "../auth";
 import { ErrorBox, Loading, Qty, fmtDate, fmtInt, fmtUsd, useBusinessSettings, useDebounced, useSkus } from "../components/ui";
 import type { Category } from "../types";
+import { t } from "../i18n";
 
 interface SummaryLoc {
   location_code: string;
@@ -36,7 +37,7 @@ export default function InventoryPage() {
       <div className="tile">
         <div className="label">{label}</div>
         <div className="value">{fmtInt(l?.units)}</div>
-        <div className="sub">{sub ?? (showCost ? `成本 ${fmtUsd(l?.value_usd)}` : `${fmtInt(l?.sku_count)} 個 SKU`)}</div>
+        <div className="sub">{sub ?? (showCost ? t("成本 {0}", [fmtUsd(l?.value_usd)]) : t("{0} 個 SKU", [fmtInt(l?.sku_count)]))}</div>
       </div>
     );
   };
@@ -44,65 +45,65 @@ export default function InventoryPage() {
   return (
     <>
       <div className="page-head">
-        <h1>庫存總覽</h1>
+        <h1>{t("庫存總覽")}</h1>
         {can("catalog.edit") && (
           <div className="row">
-            <Link className="btn" to="/stock/operations">入庫/調整</Link>
+            <Link className="btn" to="/stock/operations">{t("入庫/調整")}</Link>
             <Link className="btn" to="/bundles/new">
-              新增組合商品
+              {t("新增組合商品")}
             </Link>
             <Link className="btn primary" to="/products/new">
-              新增商品
+              {t("新增商品")}
             </Link>
           </div>
         )}
       </div>
 
       <div className="tiles" style={japanEnabled ? undefined : { gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }}>
-        {japanEnabled && tile("JP_MAIN", "日本倉")}
-        {tile("IN_TRANSIT", "運送中（不可銷售）")}
-        {tile("US_MAIN", "美國倉")}
+        {japanEnabled && tile("JP_MAIN", t("日本倉"))}
+        {tile("IN_TRANSIT", t("運送中（不可銷售）"))}
+        {tile("US_MAIN", t("美國倉"))}
         <div className="tile">
-          <div className="label">美國可銷售</div>
+          <div className="label">{t("美國可銷售")}</div>
           <div className="value">{fmtInt(loc("US_MAIN")?.available_units)}</div>
-          <div className="sub">已預留 {fmtInt(loc("US_MAIN")?.reserved_units)}</div>
+          <div className="sub">{t("已預留")} {fmtInt(loc("US_MAIN")?.reserved_units)}</div>
         </div>
       </div>
 
       <div className="card">
         <div className="row" style={{ marginBottom: 12 }}>
-          <input style={{ flex: "2 1 220px" }} placeholder="搜尋 SKU、名稱、條碼…" value={search} onChange={(e) => setSearch(e.target.value)} aria-label="搜尋" />
-          <select style={{ flex: "1 1 140px" }} value={category} onChange={(e) => setCategory(e.target.value)} aria-label="分類">
-            <option value="">全部分類</option>
+          <input style={{ flex: "2 1 220px" }} placeholder={t("搜尋 SKU、名稱、條碼…")} value={search} onChange={(e) => setSearch(e.target.value)} aria-label={t("搜尋")} />
+          <select style={{ flex: "1 1 140px" }} value={category} onChange={(e) => setCategory(e.target.value)} aria-label={t("分類")}>
+            <option value="">{t("全部分類")}</option>
             {cats.data?.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
               </option>
             ))}
           </select>
-          <select style={{ flex: "1 1 120px" }} value={status} onChange={(e) => setStatus(e.target.value)} aria-label="狀態">
-            <option value="active">販售中</option>
-            <option value="discontinued">已停售</option>
+          <select style={{ flex: "1 1 120px" }} value={status} onChange={(e) => setStatus(e.target.value)} aria-label={t("狀態")}>
+            <option value="active">{t("販售中")}</option>
+            <option value="discontinued">{t("已停售")}</option>
           </select>
         </div>
         <ErrorBox error={skus.error} />
         {skus.isLoading ? (
           <Loading />
         ) : !skus.data?.length ? (
-          <div className="empty">{search ? "找不到符合的商品" : "還沒有商品。先新增商品，再登記期初庫存。"}</div>
+          <div className="empty">{search ? t("找不到符合的商品") : t("還沒有商品。先新增商品，再登記期初庫存。")}</div>
         ) : (
           <div className="table-wrap">
             <table className="data responsive compact">
               <thead>
                 <tr>
-                  <th>商品</th>
-                  {japanEnabled && <th className="num">日本倉</th>}
-                  <th className="num">運送中</th>
-                  <th className="num">美國倉</th>
-                  <th className="num">已預留</th>
-                  <th className="num">可銷售</th>
-                  {showCost && <th className="num">庫存成本（含運送中）</th>}
-                  <th>最近入庫</th>
+                  <th>{t("商品")}</th>
+                  {japanEnabled && <th className="num">{t("日本倉")}</th>}
+                  <th className="num">{t("運送中")}</th>
+                  <th className="num">{t("美國倉")}</th>
+                  <th className="num">{t("已預留")}</th>
+                  <th className="num">{t("可銷售")}</th>
+                  {showCost && <th className="num">{t("庫存成本（含運送中）")}</th>}
+                  <th>{t("最近入庫")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -115,18 +116,18 @@ export default function InventoryPage() {
                           <div className="mono">{s.sku_code}</div>
                           <div className="small" style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
                             {s.name}
-                            {s.variant_name ? ` · ${s.variant_name}` : ""} {s.is_bundle && <span className="badge accent">組合</span>}
+                            {s.variant_name ? ` · ${s.variant_name}` : ""} {s.is_bundle && <span className="badge accent">{t("組合")}</span>}
                           </div>
                         </div>
                       </div>
                     </td>
-                    {japanEnabled && <td className="num" data-label="日本倉"><Qty n={s.jp_on_hand} /></td>}
-                    <td className="num" data-label="運送中"><Qty n={s.in_transit} kind="transit" /></td>
-                    <td className="num" data-label="美國倉"><Qty n={s.us_on_hand} /></td>
-                    <td className="num" data-label="已預留"><Qty n={s.us_reserved} /></td>
-                    <td className="num" data-label="可銷售" style={{ fontWeight: 700 }}><Qty n={s.us_available} /></td>
-                    {showCost && <td className="num wide" data-label="庫存成本">{s.is_bundle ? "—" : fmtUsd(s.inventory_value_usd)}</td>}
-                    <td data-label="最近入庫" className="small muted wide">{fmtDate(s.last_received_at, me?.timezone)}</td>
+                    {japanEnabled && <td className="num" data-label={t("日本倉")}><Qty n={s.jp_on_hand} /></td>}
+                    <td className="num" data-label={t("運送中")}><Qty n={s.in_transit} kind="transit" /></td>
+                    <td className="num" data-label={t("美國倉")}><Qty n={s.us_on_hand} /></td>
+                    <td className="num" data-label={t("已預留")}><Qty n={s.us_reserved} /></td>
+                    <td className="num" data-label={t("可銷售")} style={{ fontWeight: 700 }}><Qty n={s.us_available} /></td>
+                    {showCost && <td className="num wide" data-label={t("庫存成本")}>{s.is_bundle ? "—" : fmtUsd(s.inventory_value_usd)}</td>}
+                    <td data-label={t("最近入庫")} className="small muted wide">{fmtDate(s.last_received_at, me?.timezone)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -134,7 +135,7 @@ export default function InventoryPage() {
           </div>
         )}
         <p className="small muted" style={{ marginBottom: 0 }}>
-          可銷售 = 美國倉 − 已預留。運送中的商品在美國簽收前不計入可銷售。組合商品顯示的是組成 SKU 可湊成的完整組數。
+          {t("可銷售 = 美國倉 − 已預留。運送中的商品在美國簽收前不計入可銷售。組合商品顯示的是組成 SKU 可湊成的完整組數。")}
         </p>
       </div>
     </>

@@ -16,7 +16,7 @@ async function login(page) {
   await page.getByLabel("Email").fill(USER);
   await page.getByLabel("密碼").fill(PW);
   await page.getByRole("button", { name: "登入" }).click();
-  await page.getByRole("heading", { name: "庫存總覽" }).waitFor();
+  await page.locator(".shell").waitFor();
 }
 async function upload(page, file, typeLabel = "採購成本") {
   await page.goto(BASE + "/imports");
@@ -27,7 +27,7 @@ async function upload(page, file, typeLabel = "採購成本") {
 
 (async () => {
   const browser = await chromium.launch();
-  const ctx = await browser.newContext({ viewport: { width: 1360, height: 900 }, deviceScaleFactor: 2 });
+  const ctx = await browser.newContext({ locale: "zh-TW", viewport: { width: 1360, height: 900 }, deviceScaleFactor: 2 });
   const page = await ctx.newPage();
   page.on("pageerror", (e) => errors.push(e.message));
   page.on("console", (m) => m.type() === "error" && !/status of (401|409|422)/.test(m.text()) && errors.push(m.text()));
@@ -69,14 +69,14 @@ async function upload(page, file, typeLabel = "採購成本") {
   step("re-uploading the same file is refused");
 
   // 4. Importing cost added NO stock
-  await page.goto(BASE + "/");
+  await page.goto(BASE + "/inventory");
   await page.getByText("PK151-BOX-JP").waitFor();
   let row = (await page.locator("tr", { hasText: "PK151-BOX-JP" }).innerText()).replace(/\s+/g, " ");
   if (!/\(JP\) 0 0 0 0 \$0.00/.test(row)) throw new Error("cost import must not create stock: " + row);
   step("no stock created by importing costs");
 
   // 5. Phone: ship 10 of 24 boxes from Japan -> in transit (not sellable), then receive in the US
-  const phoneCtx = await browser.newContext({ ...devices["iPhone 13"] });
+  const phoneCtx = await browser.newContext({ ...devices["iPhone 13"], locale: "zh-TW" });
   const phone = await phoneCtx.newPage();
   phone.on("pageerror", (e) => errors.push(e.message));
   await login(phone);
@@ -88,7 +88,7 @@ async function upload(page, file, typeLabel = "採購成本") {
   await phone.getByText("運送中 10 件：2026/11/05 寄出，預計 2026/11/14 到美國").waitFor();
   step("shipped 10 from Japan on phone: in transit, ETA = ship date + 9 days");
 
-  await page.goto(BASE + "/");
+  await page.goto(BASE + "/inventory");
   await page.reload();
   await page.getByText("PK151-BOX-JP").waitFor();
   row = (await page.locator("tr", { hasText: "PK151-BOX-JP" }).innerText()).replace(/\s+/g, " ");

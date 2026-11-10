@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { lang, setLanguage } from "./i18n";
 import { api, refreshSession, setAccessToken, setSessionLostHandler, type TokenResponse } from "./api";
 import type { Me } from "./types";
 
@@ -24,6 +25,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const reloadMe = useCallback(async () => {
     const gen = generation.current;
     const me = await api<Me>("/auth/me");
+    // the account's saved language wins over this browser's (reloads once if they differ)
+    if ((me.locale === "zh-TW" || me.locale === "en-US") && me.locale !== lang) {
+      setLanguage(me.locale);
+      return;
+    }
     if (gen === generation.current) setState({ status: "authenticated", me });
   }, []);
 

@@ -1,3 +1,4 @@
+import { t } from "./i18n";
 export interface Me {
   id: number;
   email: string;
@@ -120,34 +121,34 @@ export interface UserRow {
 }
 
 export const LOCATION_LABEL: Record<string, string> = {
-  JP_MAIN: "日本倉",
-  US_MAIN: "美國倉",
-  IN_TRANSIT: "運送中",
-  SUPPLIER: "供應商",
-  CUSTOMER: "顧客",
-  ADJUSTMENT: "盤點調整",
-  LOSS: "遺失/損壞",
+  JP_MAIN: t("日本倉"),
+  US_MAIN: t("美國倉"),
+  IN_TRANSIT: t("運送中"),
+  SUPPLIER: t("供應商"),
+  CUSTOMER: t("顧客"),
+  ADJUSTMENT: t("盤點調整"),
+  LOSS: t("遺失/損壞"),
 };
 
 export const MOVEMENT_LABEL: Record<string, string> = {
-  purchase_receipt: "採購入庫",
-  opening_balance: "期初庫存",
-  transfer_ship: "日本出貨",
-  transfer_receive: "美國簽收",
-  transfer_loss: "運送短少",
-  sale: "銷售出庫",
-  customer_return: "顧客退貨",
-  adjustment_in: "調整增加",
-  adjustment_out: "調整減少",
-  damage: "損壞報廢",
-  box_open: "拆盒（盒子扣除）",
-  box_content: "拆盒（取出內容）",
+  purchase_receipt: t("採購入庫"),
+  opening_balance: t("期初庫存"),
+  transfer_ship: t("日本出貨"),
+  transfer_receive: t("美國簽收"),
+  transfer_loss: t("運送短少"),
+  sale: t("銷售出庫"),
+  customer_return: t("顧客退貨"),
+  adjustment_in: t("調整增加"),
+  adjustment_out: t("調整減少"),
+  damage: t("損壞報廢"),
+  box_open: t("拆盒（盒子扣除）"),
+  box_content: t("拆盒（取出內容）"),
 };
 
 export const ROLE_LABEL: Record<string, string> = {
-  admin: "管理員",
-  jp_inventory: "日本庫存管理員",
-  us_live_ops: "美國直播營運",
-  tw_manager: "台灣管理人員",
-  read_only: "唯讀",
+  admin: t("管理員"),
+  jp_inventory: t("日本庫存管理員"),
+  us_live_ops: t("美國直播營運"),
+  tw_manager: t("台灣管理人員"),
+  read_only: t("唯讀"),
 };

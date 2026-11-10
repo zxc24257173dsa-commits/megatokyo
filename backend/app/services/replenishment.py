@@ -45,6 +45,11 @@ from app.services.trends import daily_demand
 URGENT_DAYS = 3
 
 
+def _note(key: str, **args) -> dict:
+    """An explanation note the screen translates: the Chinese template is the key (see frontend locales/en.ts)."""
+    return {"key": key, "args": args}
+
+
 def settings(db: Session) -> ReplenishmentSettings:
     s = db.get(ReplenishmentSettings, 1)
     if s is None:
@@ -139,11 +144,13 @@ def compute(db: Session) -> dict:
         p = params.get(sku)
         if history < st.min_history_days:
             if p and p.manual_daily_velocity is not None:
-                notes.append(f"銷售紀錄只有 {history} 天，使用手動設定的每日銷量 {float(p.manual_daily_velocity):g}")
+                notes.append(_note("銷售紀錄只有 {days} 天，使用手動設定的每日銷量 {v}", days=history,
+                                   v=f"{float(p.manual_daily_velocity):g}"))
                 v = float(p.manual_daily_velocity)
                 return v7, v14, v30, v, _std(s), notes
             if history:
-                notes.append(f"銷售紀錄只有 {history} 天（少於 {st.min_history_days} 天），需求可能不準")
+                notes.append(_note("銷售紀錄只有 {days} 天（少於 {min} 天），需求可能不準", days=history,
+                                   min=st.min_history_days))
                 # only average over days it was actually on sale
                 v = _mean(s[-history:]) if history < 30 else w7 * v7 + w14 * v14 + w30 * v30
                 return v7, v14, v30, v, _std(s[-history:]), notes
@@ -166,14 +173,15 @@ def compute(db: Session) -> dict:
                 rate, c, q = max(rates)
                 if rate > 0:
                     extra_box_rate = rate
-                    notes.append(f"另外每天約 {rate:.2f} 盒要拆給盒內商品（主要是 {results[c]['sku_code']}，每盒 {q} 件）")
+                    notes.append(_note("另外每天約 {rate} 盒要拆給盒內商品（主要是 {sku}，每盒 {q} 件）",
+                                       rate=f"{rate:.2f}", sku=results[c]["sku_code"], q=q))
                     sigma = math.sqrt(sigma ** 2 + (results[c]["sigma_daily"] / q) ** 2)
         v_total = v + extra_box_rate
         ss_override = p_["safety_stock_override"] if p_["safety_stock_override"] is not None else (
             prm.safety_stock_override if prm else None)
         ss = ss_override if ss_override is not None else math.ceil(z * sigma * math.sqrt(L) - 1e-9)
         if ss_override is not None:
-            notes.append(f"安全庫存使用手動設定 {ss_override}")
+            notes.append(_note("安全庫存使用手動設定 {n}", n=ss_override))
         target = v_total * (L + R) + ss
         horizon = today + timedelta(days=L)
         tr = p_.get("transit_by_eta", [])
@@ -225,7 +233,7 @@ def compute(db: Session) -> dict:
         if r["action"] == "open_box" and r["source_box_sku_id"] in pos:
             have = int(pos[r["source_box_sku_id"]]["us_available"])
             if r["boxes_to_open"] > have:
-                r["notes"].append(f"美國只有 {have} 盒可拆；其餘要等盒子到貨（盒子的建議已包含這部分需求）")
+                r["notes"].append(_note("美國只有 {n} 盒可拆；其餘要等盒子到貨（盒子的建議已包含這部分需求）", n=have))
                 r["boxes_to_open"] = have
     rank = {"red": 0, "orange": 1, "yellow": 2, "green": 3}
     rows = sorted(results.values(), key=lambda r: (rank[r["status_color"]], r["latest_order_date"] or date.max,

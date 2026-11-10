@@ -20,7 +20,7 @@ async function login(page, email, pw) {
 
 (async () => {
   const b = await chromium.launch();
-  const ctx = await b.newContext({ viewport: { width: 1360, height: 900 }, deviceScaleFactor: 2 });
+  const ctx = await b.newContext({ locale: "zh-TW", viewport: { width: 1360, height: 900 }, deviceScaleFactor: 2 });
   const page = await ctx.newPage();
   page.on("pageerror", (e) => errors.push(e.message));
   page.on("console", (m) => m.type() === "error" && !/status of (401|409|422)/.test(m.text()) && errors.push(m.text()));
@@ -54,7 +54,7 @@ async function login(page, email, pw) {
   if (await page.locator("td.lead", { hasText: "PERONA OP14-111" }).count()) throw new Error("PERONA still unmapped");
   step("mapped PERONA once -> all its auctions: " + before.slice(0, 80));
 
-  await page.goto(BASE + "/");
+  await page.goto(BASE + "/inventory");
   await page.getByText("OP-GC26-PERONA").waitFor();
   const inv = (await page.locator("tr", { hasText: "OP-GC26-PERONA" }).innerText()).replace(/\s+/g, " ");
   console.log("  inventory:", inv);
@@ -75,7 +75,7 @@ async function login(page, email, pw) {
   await page.screenshot({ path: path.join(OUT, "p5-04-whatnot-settings.png"), fullPage: true });
   step("Whatnot settings: connection test against the real account");
 
-  const phone = await (await b.newContext({ ...devices["iPhone 13"] })).newPage();
+  const phone = await (await b.newContext({ ...devices["iPhone 13"], locale: "zh-TW" })).newPage();
   phone.on("pageerror", (e) => errors.push(e.message));
   await login(phone, "taipei@megatokyo.test", "Formosa-Harbor-2026");
   await phone.goto(BASE + "/orders");

@@ -5,7 +5,7 @@ import pyotp
 from sqlalchemy import select, text
 
 from app.models.auth import AuditLog
-from tests.conftest import STRONG_PW, auth_header, enroll_mfa, login, make_user
+from tests.conftest import STRONG_PW, auth_header, enroll_mfa, login, make_user, token_for
 
 
 def actions(db, user_id):
@@ -171,3 +171,10 @@ def test_expired_access_token_rejected(api, db, monkeypatch):
          "exp": int((datetime.now(UTC) - timedelta(minutes=1)).timestamp())},
         get_settings().jwt_secret.get_secret_value(), algorithm="HS256")
     assert api.get("/api/v1/auth/me", headers=auth_header(expired)).status_code == 401
+
+
+def test_user_sets_interface_language(api, db):
+    _, tok = token_for(api, db, "us_live_ops")
+    assert api.put("/api/v1/auth/me/preferences", headers=auth_header(tok), json={"locale": "fr-FR"}).status_code == 422
+    assert api.put("/api/v1/auth/me/preferences", headers=auth_header(tok), json={"locale": "en-US"}).status_code == 204
+    assert api.get("/api/v1/auth/me", headers=auth_header(tok)).json()["locale"] == "en-US"

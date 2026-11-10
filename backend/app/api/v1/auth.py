@@ -8,6 +8,8 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import RedirectResponse
+from pydantic import BaseModel
+from typing import Literal
 from sqlalchemy.orm import Session
 
 from app.api.deps import CurrentUser, get_current_user, get_request_context
@@ -134,6 +136,25 @@ def me(current: CurrentUser = Depends(get_current_user)):
         permissions=sorted(current.permissions), restrictions=current.restrictions,
         auth_method=current.auth_method, has_password=u.password_hash is not None,
     )
+
+
+class PreferencesIn(BaseModel):
+    locale: Literal["zh-TW", "en-US"]
+
+
+@router.put("/me/preferences", status_code=204)
+def set_preferences(body: PreferencesIn, current: CurrentUser = Depends(get_current_user),
+                    db: Session = Depends(get_db), ctx: RequestContext = Depends(get_request_context)):
+    """Interface language of the signed-in user (Phase 11)."""
+    from app.models.auth import User
+    from app.services import audit
+    u = db.get(User, current.user.id)
+    before = u.locale
+    u.locale = body.locale
+    audit.record(db, action="user.preferences", entity_type="user", entity_id=u.id, actor_id=u.id,
+                 before={"locale": before}, after={"locale": body.locale}, ctx=ctx)
+    db.commit()
+    return Response(status_code=204)
 
 
 @router.post("/password", response_model=TokenResponse)

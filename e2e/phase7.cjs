@@ -28,7 +28,7 @@ const watch = (page) => {
   fs.writeFileSync(receipt, Buffer.from("89504e470d0a1a0a0000000d4948445200000001000000010806000000" +
     "1f15c4890000000d49444154789c6360000002000154a24f5d0000000049454e44ae426082", "hex"));
   const b = await chromium.launch();
-  const ctx = await b.newContext({ viewport: { width: 1360, height: 900 }, deviceScaleFactor: 2, acceptDownloads: true });
+  const ctx = await b.newContext({ locale: "zh-TW", viewport: { width: 1360, height: 900 }, deviceScaleFactor: 2, acceptDownloads: true });
   const page = await ctx.newPage();
   page.on("dialog", (d) => d.accept(d.type() === "prompt" ? "e2e 測試作廢" : undefined));
   watch(page);
@@ -91,7 +91,7 @@ const watch = (page) => {
   await page.waitForFunction(() => !document.body.innerText.includes("已結帳"));
   step("reopened it");
 
-  const phone = await b.newContext({ ...devices["iPhone 13"] });
+  const phone = await b.newContext({ ...devices["iPhone 13"], locale: "zh-TW" });
   const p2 = await phone.newPage();
   watch(p2);
   await login(p2, "taipei@megatokyo.test", "Formosa-Harbor-2026");

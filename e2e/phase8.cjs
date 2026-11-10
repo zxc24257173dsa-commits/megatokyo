@@ -22,7 +22,7 @@ const watch = (page) => {
 
 (async () => {
   const b = await chromium.launch();
-  const ctx = await b.newContext({ viewport: { width: 1360, height: 900 }, deviceScaleFactor: 2 });
+  const ctx = await b.newContext({ locale: "zh-TW", viewport: { width: 1360, height: 900 }, deviceScaleFactor: 2 });
   const page = await ctx.newPage();
   watch(page);
   await login(page, "owner@megatokyo.test", "Kanagawa-Wave-2026!");
@@ -53,7 +53,7 @@ const watch = (page) => {
   step(`movers: ${await page.locator("tbody tr").count()} SKUs`);
   await page.screenshot({ path: path.join(OUT, "p8-03-movers.png"), fullPage: true });
 
-  const phone = await b.newContext({ ...devices["iPhone 13"] });
+  const phone = await b.newContext({ ...devices["iPhone 13"], locale: "zh-TW" });
   const p2 = await phone.newPage();
   watch(p2);
   await login(p2, "taipei@megatokyo.test", "Formosa-Harbor-2026");

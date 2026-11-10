@@ -31,7 +31,7 @@ const watch = (page) => {
   fs.writeFileSync(csv, [H.join(","), [batch, "OP-GC26-PERONA", "PERONA promo", "2026-11-05", 10, 1200, "JPY", 150, 0, 300, 0, "Tokyo"].join(",")].join("\n"));
 
   const b = await chromium.launch();
-  const ctx = await b.newContext({ viewport: { width: 1360, height: 900 }, deviceScaleFactor: 2 });
+  const ctx = await b.newContext({ locale: "zh-TW", viewport: { width: 1360, height: 900 }, deviceScaleFactor: 2 });
   const page = await ctx.newPage();
   watch(page);
   page.on("dialog", (d) => d.accept());
@@ -84,7 +84,7 @@ const watch = (page) => {
   await page.getByRole("cell", { name: "存貨損耗／盤盈" }).waitFor();
   step("P&L shows the inventory loss line");
 
-  const phone = await b.newContext({ ...devices["iPhone 13"] });
+  const phone = await b.newContext({ ...devices["iPhone 13"], locale: "zh-TW" });
   const p2 = await phone.newPage();
   watch(p2);
   await login(p2, "taipei@megatokyo.test", "Formosa-Harbor-2026");

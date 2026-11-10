@@ -13,6 +13,7 @@ import { Loading } from "./components/ui";
 import { ForcedMfaPage, ForcedPasswordPage, LoginPage } from "./pages/AuthPages";
 import { ImportDetailPage, ImportsPage } from "./pages/ImportPages";
 import InventoryPage from "./pages/InventoryPage";
+import { DashboardPage } from "./pages/DashboardPage";
 import { OrderDetailPage, OrdersPage, WhatnotSettingsPage } from "./pages/OrderPages";
 import { NewBundlePage, NewProductPage } from "./pages/ProductForms";
 import { PurchaseBatchPage, PurchaseBatchesPage } from "./pages/PurchasingPages";
@@ -37,7 +38,8 @@ function Gate() {
   return (
     <Routes>
       <Route element={<Layout />}>
-        <Route index element={can("inventory.view") ? <InventoryPage /> : <Navigate to="/account" />} />
+        <Route index element={<DashboardPage />} />
+        <Route path="inventory" element={can("inventory.view") ? <InventoryPage /> : <Navigate to="/" />} />
         <Route path="skus/:id" element={<SkuDetailPage />} />
         <Route path="products/new" element={<NewProductPage />} />
         <Route path="bundles/new" element={<NewBundlePage />} />

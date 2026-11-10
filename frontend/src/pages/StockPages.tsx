@@ -5,9 +5,10 @@ import { api, newIdempotencyKey } from "../api";
 import { useAuth } from "../auth";
 import { ErrorBox, Field, Loading, SkuPicker, fmtDateTime, fmtInt, useBusinessSettings } from "../components/ui";
 import { LOCATION_LABEL, type StockCount } from "../types";
+import { t } from "../i18n";
 
 type Op = "opening" | "increase" | "decrease" | "damage";
-const OP_LABEL: Record<Op, string> = { opening: "期初庫存", increase: "調整增加", decrease: "調整減少", damage: "損壞報廢" };
+const OP_LABEL: Record<Op, string> = { opening: t("期初庫存"), increase: t("調整增加"), decrease: t("調整減少"), damage: t("損壞報廢") };
 
 function useAllowedLocations() {
   const { can } = useAuth();
@@ -37,7 +38,7 @@ export function StockOperationsPage() {
       return api("/inventory/adjustments", { body: { location_code: loc, kind: op, reason, lines: payload }, idempotencyKey: idemKey });
     },
     onSuccess: () => {
-      setDone(`${OP_LABEL[op]}已完成：${LOCATION_LABEL[loc]} ${lines.filter((l) => l.sku_id).length} 個 SKU`);
+      setDone(t("{0}已完成：{1} {2} 個 SKU", [OP_LABEL[op], LOCATION_LABEL[loc], lines.filter((l) => l.sku_id).length]));
       setLines([{ sku_id: null, qty: "", cost: "" }]);
       setReason("");
       setIdemKey(newIdempotencyKey());
@@ -45,38 +46,38 @@ export function StockOperationsPage() {
     },
   });
 
-  if (!locations.length) return <div className="card">你沒有調整任何倉庫庫存的權限。</div>;
+  if (!locations.length) return <div className="card">{t("你沒有調整任何倉庫庫存的權限。")}</div>;
   const needsCost = op === "opening" || op === "increase";
   const set = (i: number, k: "qty" | "cost", v: string) => setLines(lines.map((l, j) => (j === i ? { ...l, [k]: v } : l)));
 
   return (
     <form onSubmit={(e: FormEvent) => (e.preventDefault(), setDone(null), m.mutate())}>
-      <div className="page-head"><h1>入庫 / 庫存調整</h1></div>
+      <div className="page-head"><h1>{t("入庫 / 庫存調整")}</h1></div>
       <div className="card">
         <div className="inline-inputs">
-          <Field label="作業">
+          <Field label={t("作業")}>
             <select value={op} onChange={(e) => setOp(e.target.value as Op)}>
               {(Object.keys(OP_LABEL) as Op[]).map((k) => <option key={k} value={k}>{OP_LABEL[k]}</option>)}
             </select>
           </Field>
-          <Field label="倉庫">
+          <Field label={t("倉庫")}>
             <select value={loc} onChange={(e) => setLoc(e.target.value)}>
               {locations.map((l) => <option key={l} value={l}>{LOCATION_LABEL[l]}</option>)}
             </select>
           </Field>
         </div>
         <div className="alert info small">
-          {op === "opening" && "開始使用系統時登記現有庫存。每一行會建立一個成本批次，需要輸入單位成本（USD）。之後的採購請用「試算表匯入」與「採購批次」的寄出／簽收。"}
-          {op === "increase" && "盤點多出、找到的商品。會併入該 SKU 最新批次的成本；若從未有過庫存，需要輸入單位成本。"}
-          {op === "decrease" && "盤點短少等原因減少庫存，依先進先出從最早的批次扣除。"}
-          {op === "damage" && "損壞、無法銷售的商品，移至「遺失/損壞」，依先進先出扣除。"}
+          {op === "opening" && t("開始使用系統時登記現有庫存。每一行會建立一個成本批次，需要輸入單位成本（USD）。之後的採購請用「試算表匯入」與「採購批次」的寄出／簽收。")}
+          {op === "increase" && t("盤點多出、找到的商品。會併入該 SKU 最新批次的成本；若從未有過庫存，需要輸入單位成本。")}
+          {op === "decrease" && t("盤點短少等原因減少庫存，依先進先出從最早的批次扣除。")}
+          {op === "damage" && t("損壞、無法銷售的商品，移至「遺失/損壞」，依先進先出扣除。")}
         </div>
-        <Field label={op === "opening" ? "備註（選填）" : "原因（必填）"}>
+        <Field label={op === "opening" ? t("備註（選填）") : t("原因（必填）")}>
           <input required={op !== "opening"} value={reason} onChange={(e) => setReason(e.target.value)} />
         </Field>
       </div>
       <div className="card">
-        <h2>品項</h2>
+        <h2>{t("品項")}</h2>
         {done && <div className="alert ok">{done}</div>}
         <ErrorBox error={m.error} />
         {lines.map((l, i) => (
@@ -84,16 +85,16 @@ export function StockOperationsPage() {
             <div style={{ flex: "3 1 220px" }}>
               <SkuPicker value={l.sku_id} onChange={(v) => setLines(lines.map((x, j) => (j === i ? { ...x, sku_id: v } : x)))} />
             </div>
-            <input style={{ flex: "1 1 80px" }} aria-label="數量" placeholder="數量" inputMode="numeric" value={l.qty} onChange={(e) => set(i, "qty", e.target.value.replace(/\D/g, ""))} />
+            <input style={{ flex: "1 1 80px" }} aria-label={t("數量")} placeholder={t("數量")} inputMode="numeric" value={l.qty} onChange={(e) => set(i, "qty", e.target.value.replace(/\D/g, ""))} />
             {needsCost && (
-              <input style={{ flex: "1 1 110px" }} aria-label="單位成本 USD" placeholder={op === "opening" ? "單位成本 USD" : "成本（選填）"} inputMode="decimal" required={op === "opening"} value={l.cost} onChange={(e) => set(i, "cost", e.target.value)} />
+              <input style={{ flex: "1 1 110px" }} aria-label={t("單位成本 USD")} placeholder={op === "opening" ? t("單位成本 USD") : t("成本（選填）")} inputMode="decimal" required={op === "opening"} value={l.cost} onChange={(e) => set(i, "cost", e.target.value)} />
             )}
-            {lines.length > 1 && <button type="button" className="btn sm danger" onClick={() => setLines(lines.filter((_, j) => j !== i))}>移除</button>}
+            {lines.length > 1 && <button type="button" className="btn sm danger" onClick={() => setLines(lines.filter((_, j) => j !== i))}>{t("移除")}</button>}
           </div>
         ))}
         <div className="row">
-          <button type="button" className="btn" onClick={() => setLines([...lines, { sku_id: null, qty: "", cost: "" }])}>＋ 新增一行</button>
-          <button className="btn primary" disabled={m.isPending}>{m.isPending ? "處理中…" : `確認${OP_LABEL[op]}`}</button>
+          <button type="button" className="btn" onClick={() => setLines([...lines, { sku_id: null, qty: "", cost: "" }])}>{t("＋ 新增一行")}</button>
+          <button className="btn primary" disabled={m.isPending}>{m.isPending ? t("處理中…") : t("確認{0}", [OP_LABEL[op]])}</button>
         </div>
       </div>
     </form>
@@ -101,10 +102,10 @@ export function StockOperationsPage() {
 }
 
 const STATUS_LABEL: Record<string, [string, string]> = {
-  draft: ["盤點中", "info"],
-  submitted: ["待核准", "warn"],
-  approved: ["已核准", "ok"],
-  cancelled: ["已取消", ""],
+  draft: [t("盤點中"), "info"],
+  submitted: [t("待核准"), "warn"],
+  approved: [t("已核准"), "ok"],
+  cancelled: [t("已取消"), ""],
 };
 
 export function StockCountsPage() {
@@ -120,28 +121,28 @@ export function StockCountsPage() {
   return (
     <>
       <div className="page-head">
-        <h1>盤點</h1>
+        <h1>{t("盤點")}</h1>
         {locations.length > 0 && (
           <div className="row">
-            <select value={loc} onChange={(e) => setLoc(e.target.value)} aria-label="倉庫" style={{ width: "auto" }}>
+            <select value={loc} onChange={(e) => setLoc(e.target.value)} aria-label={t("倉庫")} style={{ width: "auto" }}>
               {locations.map((l) => <option key={l} value={l}>{LOCATION_LABEL[l]}</option>)}
             </select>
-            <button className="btn primary" onClick={() => create.mutate()} disabled={create.isPending}>開始盤點</button>
+            <button className="btn primary" onClick={() => create.mutate()} disabled={create.isPending}>{t("開始盤點")}</button>
           </div>
         )}
       </div>
       <ErrorBox error={create.error ?? list.error} />
       <div className="card">
-        {list.isLoading ? <Loading /> : !list.data?.length ? <div className="empty">尚無盤點紀錄</div> : (
+        {list.isLoading ? <Loading /> : !list.data?.length ? <div className="empty">{t("尚無盤點紀錄")}</div> : (
           <table className="data responsive">
-            <thead><tr><th>#</th><th>倉庫</th><th>狀態</th><th>建立時間</th></tr></thead>
+            <thead><tr><th>#</th><th>{t("倉庫")}</th><th>{t("狀態")}</th><th>{t("建立時間")}</th></tr></thead>
             <tbody>
               {list.data.map((c) => (
                 <tr key={c.id} className="click" onClick={() => nav(`/stock/counts/${c.id}`)}>
-                  <td className="lead">盤點 #{c.id}</td>
-                  <td data-label="倉庫">{LOCATION_LABEL[c.location_code]}</td>
-                  <td data-label="狀態"><span className={`badge ${STATUS_LABEL[c.status]?.[1]}`}>{STATUS_LABEL[c.status]?.[0]}</span></td>
-                  <td data-label="建立時間" className="small">{fmtDateTime(c.created_at)}</td>
+                  <td className="lead">{t("盤點 #")}{c.id}</td>
+                  <td data-label={t("倉庫")}>{LOCATION_LABEL[c.location_code]}</td>
+                  <td data-label={t("狀態")}><span className={`badge ${STATUS_LABEL[c.status]?.[1]}`}>{STATUS_LABEL[c.status]?.[0]}</span></td>
+                  <td data-label={t("建立時間")} className="small">{fmtDateTime(c.created_at)}</td>
                 </tr>
               ))}
             </tbody>
@@ -192,27 +193,27 @@ export function StockCountPage() {
     <>
       <div className="page-head">
         <div>
-          <div className="small muted"><Link to="/stock/counts">盤點</Link> / #{c.id}</div>
-          <h1>{LOCATION_LABEL[c.location_code]} 盤點 #{c.id} <span className={`badge ${STATUS_LABEL[c.status]?.[1]}`}>{STATUS_LABEL[c.status]?.[0]}</span></h1>
+          <div className="small muted"><Link to="/stock/counts">{t("盤點")}</Link> / #{c.id}</div>
+          <h1>{LOCATION_LABEL[c.location_code]} {t("盤點 #")}{c.id} <span className={`badge ${STATUS_LABEL[c.status]?.[1]}`}>{STATUS_LABEL[c.status]?.[0]}</span></h1>
         </div>
         <div className="row">
-          {editable && <button className="btn" disabled={!dirty || save.isPending} onClick={() => save.mutate()}>儲存</button>}
-          {editable && <button className="btn primary" disabled={dirty || action.isPending} onClick={() => action.mutate("submit")} title={dirty ? "請先儲存" : undefined}>送出待核准</button>}
+          {editable && <button className="btn" disabled={!dirty || save.isPending} onClick={() => save.mutate()}>{t("儲存")}</button>}
+          {editable && <button className="btn primary" disabled={dirty || action.isPending} onClick={() => action.mutate("submit")} title={dirty ? t("請先儲存") : undefined}>{t("送出待核准")}</button>}
           {c.status === "submitted" && can("stock_count.approve") && (
-            <button className="btn primary" disabled={action.isPending} onClick={() => confirm("核准後會依差異調整庫存，確定？") && action.mutate("approve")}>核准並調整庫存</button>
+            <button className="btn primary" disabled={action.isPending} onClick={() => confirm(t("核准後會依差異調整庫存，確定？")) && action.mutate("approve")}>{t("核准並調整庫存")}</button>
           )}
-          {(c.status === "draft" || c.status === "submitted") && <button className="btn danger" onClick={() => confirm("取消這次盤點？") && action.mutate("cancel")}>取消</button>}
+          {(c.status === "draft" || c.status === "submitted") && <button className="btn danger" onClick={() => confirm(t("取消這次盤點？")) && action.mutate("cancel")}>{t("取消")}</button>}
         </div>
       </div>
       <ErrorBox error={save.error ?? action.error} />
-      {c.status === "submitted" && !can("stock_count.approve") && <div className="alert info">已送出，等待台灣管理人員或管理員核准。</div>}
+      {c.status === "submitted" && !can("stock_count.approve") && <div className="alert info">{t("已送出，等待台灣管理人員或管理員核准。")}</div>}
       <div className="card">
         <div className="row" style={{ marginBottom: 10 }}>
-          <input placeholder="篩選 SKU…" value={filter} onChange={(e) => setFilter(e.target.value)} style={{ flex: 1 }} />
-          <span className="small muted">已填 {counted} / {c.lines.length}</span>
+          <input placeholder={t("篩選 SKU…")} value={filter} onChange={(e) => setFilter(e.target.value)} style={{ flex: 1 }} />
+          <span className="small muted">{t("已填")} {counted} / {c.lines.length}</span>
         </div>
         <table className="data responsive">
-          <thead><tr><th>SKU</th><th className="num">系統數量</th><th className="num">實際盤點</th><th className="num">差異</th></tr></thead>
+          <thead><tr><th>SKU</th><th className="num">{t("系統數量")}</th><th className="num">{t("實際盤點")}</th><th className="num">{t("差異")}</th></tr></thead>
           <tbody>
             {lines.map((l) => {
               const v = merged[l.sku_id];
@@ -220,13 +221,13 @@ export function StockCountPage() {
               return (
                 <tr key={l.sku_id}>
                   <td className="lead"><span className="mono">{l.sku_code}</span> <span className="small muted">{l.name}</span></td>
-                  <td className="num" data-label="系統數量">{fmtInt(l.expected_qty)}</td>
-                  <td className="num" data-label="實際盤點">
+                  <td className="num" data-label={t("系統數量")}>{fmtInt(l.expected_qty)}</td>
+                  <td className="num" data-label={t("實際盤點")}>
                     {editable ? (
-                      <input style={{ width: 90, textAlign: "right" }} inputMode="numeric" value={v} onChange={(e) => setEntries({ ...entries, [l.sku_id]: e.target.value.replace(/\D/g, "") })} aria-label={`${l.sku_code} 盤點數量`} />
+                      <input style={{ width: 90, textAlign: "right" }} inputMode="numeric" value={v} onChange={(e) => setEntries({ ...entries, [l.sku_id]: e.target.value.replace(/\D/g, "") })} aria-label={t("{0} 盤點數量", [l.sku_code])} />
                     ) : fmtInt(l.counted_qty)}
                   </td>
-                  <td className="num" data-label="差異">
+                  <td className="num" data-label={t("差異")}>
                     {diff === null ? "—" : <span className={`badge ${diff === 0 ? "ok" : diff < 0 ? "danger" : "warn"}`}>{diff > 0 ? "+" : ""}{diff}</span>}
                   </td>
                 </tr>
@@ -234,7 +235,7 @@ export function StockCountPage() {
             })}
           </tbody>
         </table>
-        <p className="small muted" style={{ marginBottom: 0 }}>系統數量會在核准當下重新讀取；請在倉庫沒有出入貨時盤點。</p>
+        <p className="small muted" style={{ marginBottom: 0 }}>{t("系統數量會在核准當下重新讀取；請在倉庫沒有出入貨時盤點。")}</p>
       </div>
     </>
   );

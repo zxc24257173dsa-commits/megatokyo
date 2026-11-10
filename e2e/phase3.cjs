@@ -48,7 +48,7 @@ async function pick(select, code) {
   await art.screenshot({ path: photo });
   await art.close();
 
-  const ctx = await browser.newContext({ viewport: { width: 1360, height: 860 }, deviceScaleFactor: 2 });
+  const ctx = await browser.newContext({ locale: "zh-TW", viewport: { width: 1360, height: 860 }, deviceScaleFactor: 2 });
   const page = await ctx.newPage();
   watch(page, "desktop");
 
@@ -65,7 +65,7 @@ async function pick(select, code) {
   const secret = (await page.locator(".mono").first().textContent()).trim();
   await page.getByLabel("2. 輸入 App 顯示的 6 位數字").fill(totp(secret));
   await page.getByRole("button", { name: "啟用雙因素驗證" }).click();
-  await page.getByRole("heading", { name: "庫存總覽" }).waitFor();
+  await page.locator(".shell").waitFor();
   step("2FA enabled, inventory page shown");
 
   // 2. Logout + login again with code
@@ -166,7 +166,7 @@ async function pick(select, code) {
   step("stock count submitted and approved (OP09 -1)");
 
   // 9. Inventory overview
-  await page.goto(BASE + "/");
+  await page.goto(BASE + "/inventory");
   await page.getByText("PK151-STARTER").waitFor();
   await page.waitForTimeout(300);
   await page.screenshot({ path: path.join(OUT, "02-inventory-desktop.png"), fullPage: true });
@@ -193,7 +193,7 @@ async function pick(select, code) {
   step("JP staff user created");
 
   // 12. Staff first login: forced password change, then limited menu
-  const ctx2 = await browser.newContext({ ...devices["iPhone 13"] });
+  const ctx2 = await browser.newContext({ ...devices["iPhone 13"], locale: "zh-TW" });
   const phone = await ctx2.newPage();
   watch(phone, "phone");
   await phone.goto(BASE);
@@ -205,7 +205,7 @@ async function pick(select, code) {
   await phone.getByLabel(/^新密碼/).fill("Shinjuku-Night-88");
   await phone.getByLabel("再輸入一次新密碼").fill("Shinjuku-Night-88");
   await phone.getByRole("button", { name: "更新密碼" }).click();
-  await phone.getByRole("heading", { name: "庫存總覽" }).waitFor();
+  await phone.locator(".shell").waitFor();
   const navText = await phone.locator(".bottom-nav").innerText();
   if (navText.includes("使用者")) throw new Error("JP staff should not see the users menu");
   await phone.waitForTimeout(300);
@@ -220,7 +220,7 @@ async function pick(select, code) {
   step("JP staff can only operate the Japan warehouse");
 
   // horizontal overflow check on phone
-  for (const url of ["/", "/stock/operations", "/stock/counts", "/account"]) {
+  for (const url of ["/inventory", "/stock/operations", "/stock/counts", "/account"]) {
     await phone.goto(BASE + url);
     await phone.waitForTimeout(400);
     const overflow = await phone.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);

@@ -13,6 +13,7 @@
 - 銷售趨勢、商品動向與庫存：[`docs/08-sales-trends.md`](docs/08-sales-trends.md)
 - 物流（包裹、交期、待出貨、存貨損耗）：[`docs/09-logistics.md`](docs/09-logistics.md)
 - 補貨建議：[`docs/10-replenishment.md`](docs/10-replenishment.md)
+- 首頁總覽、英文介面：[`docs/11-dashboard-and-english.md`](docs/11-dashboard-and-english.md)
 
 ## 目前進度
 

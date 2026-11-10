@@ -6,7 +6,7 @@ const OUT = process.env.E2E_OUT || require("os").tmpdir();
 const BOX_ID = process.env.E2E_BOX_ID;
 (async () => {
   const b = await chromium.launch();
-  const p = await (await b.newContext({ viewport: { width: 1360, height: 900 }, deviceScaleFactor: 2 })).newPage();
+  const p = await (await b.newContext({ locale: "zh-TW", viewport: { width: 1360, height: 900 }, deviceScaleFactor: 2 })).newPage();
   const errors = [];
   p.on("pageerror", (e) => errors.push(e.message));
   await p.goto(BASE);

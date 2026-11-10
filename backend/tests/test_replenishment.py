@@ -97,7 +97,7 @@ def test_box_contents_open_boxes_and_drive_box_demand(api, db):
     c, b = row(data, card), row(data, box)
     assert c["action"] in ("open_box", "none") and c["suggested_purchase_qty"] == 0  # cards are never bought
     assert c["source_box_sku_id"] == box
-    assert b["v_blended"] == 0.25 and any("RP-CARD" in n for n in b["notes"])
+    assert b["v_blended"] == 0.25 and any(n["args"].get("sku") == "RP-CARD" for n in b["notes"])
     if c["action"] == "open_box":
         assert c["boxes_to_open"] == math.ceil((c["target"] - c["position"]) / 4)
 

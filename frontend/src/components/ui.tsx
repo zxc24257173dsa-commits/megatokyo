@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api, errorText } from "../api";
 import type { SkuRow } from "../types";
+import { dateLocale, t } from "../i18n";
 
 // ---------- formatting ----------
 export const fmtInt = (n: number | null | undefined) => (n ?? 0).toLocaleString("en-US");
@@ -9,10 +10,10 @@ export const fmtUsd = (v: string | number | null | undefined) =>
   v === null || v === undefined ? "—" : "$" + Number(v).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 export const fmtDateTime = (iso: string | null | undefined, tz?: string) =>
   iso
-    ? new Date(iso).toLocaleString("zh-TW", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false })
+    ? new Date(iso).toLocaleString(dateLocale, { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false })
     : "—";
 export const fmtDate = (iso: string | null | undefined, tz?: string) =>
-  iso ? new Date(iso).toLocaleDateString("zh-TW", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }) : "—";
+  iso ? new Date(iso).toLocaleDateString(dateLocale, { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }) : "—";
 
 export function Qty({ n, kind }: { n: number; kind?: "transit" }) {
   return <span className={n === 0 ? "qty-zero" : kind === "transit" ? "qty-transit" : undefined}>{fmtInt(n)}</span>;
@@ -24,7 +25,7 @@ export function ErrorBox({ error }: { error: unknown }) {
 }
 
 export function Loading() {
-  return <div className="empty">載入中…</div>;
+  return <div className="empty">{t("載入中…")}</div>;
 }
 
 // ---------- icons (inline, no icon font) ----------
@@ -43,6 +44,7 @@ const paths: Record<string, string> = {
   trend: "M23 6l-9.5 9.5-5-5L1 18M17 6h6v6",
   cart: "M3 3h2l2.4 12.2a2 2 0 002 1.8h8.2a2 2 0 002-1.6L21 8H6M10 21h.01M18 21h.01",
   refill: "M21 12a9 9 0 11-3-6.7M21 4v5h-5M12 8v4l3 2",
+  home: "M3 11l9-8 9 8M5 9.5V21h5v-6h4v6h5V9.5",
   upload: "M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12",
 };
 export function Icon({ name }: { name: keyof typeof paths | string }) {
@@ -89,7 +91,7 @@ export function SkuPicker({
         onChange(id, options.find((s) => s.id === id));
       }}
     >
-      <option value="">選擇 SKU…</option>
+      <option value="">{t("選擇 SKU…")}</option>
       {options.map((s) => (
         <option key={s.id} value={s.id}>
           {s.sku_code} — {s.name}

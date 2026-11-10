@@ -3,13 +3,16 @@ import QRCode from "qrcode";
 import { api, messageFor, type TokenResponse } from "../api";
 import { useAuth } from "../auth";
 import { ErrorBox, Field } from "../components/ui";
+import { isEnglish, setLanguage, t } from "../i18n";
 
 function AuthCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="center-page">
       <div className="card auth-card">
-        <div className="brand">
-          Megatokyo <span>ERP</span>
+        <div className="brand" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span>Megatokyo <span>ERP</span></span>
+          <button type="button" className="linklike small" style={{ fontWeight: 400 }}
+                  onClick={() => setLanguage(isEnglish ? "zh-TW" : "en-US")}>{isEnglish ? "中文" : "English"}</button>
         </div>
         <h2 style={{ marginBottom: 16 }}>{title}</h2>
         {children}
@@ -88,23 +91,23 @@ export function LoginPage() {
   const passwordVisible = config.password_enabled && (!google || showPassword || mfaToken);
 
   return (
-    <AuthCard title={mfaToken ? "輸入驗證碼" : "登入"}>
+    <AuthCard title={mfaToken ? t("輸入驗證碼") : t("登入")}>
       {googleError && <div className="alert error" role="alert">{googleError}</div>}
       {google && !mfaToken && (
         <>
           <button type="button" className="btn primary" style={{ width: "100%", justifyContent: "center", minHeight: 46 }} onClick={signInWithGoogle}>
             <span style={{ background: "#fff", borderRadius: 4, padding: 3, display: "inline-flex" }}><GoogleMark /></span>
-            使用 Google 帳號登入
+            {t("使用 Google 帳號登入")}
           </button>
-          <p className="small muted" style={{ textAlign: "center", margin: "10px 0 0" }}>只有管理員加入的 Google 帳號可以登入</p>
+          <p className="small muted" style={{ textAlign: "center", margin: "10px 0 0" }}>{t("只有管理員加入的 Google 帳號可以登入")}</p>
         </>
       )}
       {google && config.password_enabled && !passwordVisible && (
         <button type="button" className="btn" style={{ width: "100%", justifyContent: "center", marginTop: 16, border: 0, color: "var(--muted)" }} onClick={() => setShowPassword(true)}>
-          使用 Email 和密碼登入（備用）
+          {t("使用 Email 和密碼登入（備用）")}
         </button>
       )}
-      {!google && !config.password_enabled && <div className="alert error">目前沒有可用的登入方式，請聯絡管理員。</div>}
+      {!google && !config.password_enabled && <div className="alert error">{t("目前沒有可用的登入方式，請聯絡管理員。")}</div>}
       {passwordVisible && (
         <form onSubmit={submit} style={google && !mfaToken ? { marginTop: 18, paddingTop: 18, borderTop: "1px solid var(--border)" } : undefined}>
           <ErrorBox error={error} />
@@ -113,12 +116,12 @@ export function LoginPage() {
               <Field label="Email">
                 <input type="email" autoComplete="username" required value={email} onChange={(e) => setEmail(e.target.value)} autoFocus={!google} />
               </Field>
-              <Field label="密碼">
+              <Field label={t("密碼")}>
                 <input type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
               </Field>
             </>
           ) : (
-            <Field label="驗證器 App 上的 6 位數字">
+            <Field label={t("驗證器 App 上的 6 位數字")}>
               <input
                 inputMode="numeric"
                 autoComplete="one-time-code"
@@ -132,11 +135,11 @@ export function LoginPage() {
             </Field>
           )}
           <button className={google ? "btn" : "btn primary"} style={{ width: "100%", justifyContent: "center" }} disabled={busy}>
-            {busy ? "處理中…" : mfaToken ? "驗證" : "登入"}
+            {busy ? t("處理中…") : mfaToken ? t("驗證") : t("登入")}
           </button>
           {mfaToken && (
             <button type="button" className="btn" style={{ width: "100%", justifyContent: "center", marginTop: 8 }} onClick={() => setMfaToken(null)}>
-              返回
+              {t("返回")}
             </button>
           )}
         </form>
@@ -176,21 +179,21 @@ export function PasswordChangeForm({ onDone, forced }: { onDone?: () => void; fo
   }
   return (
     <form onSubmit={submit}>
-      {forced && <div className="alert info">這是管理員設定的臨時密碼，請先設定你自己的密碼。</div>}
-      {done && <div className="alert ok">密碼已更新，其他裝置已登出。</div>}
+      {forced && <div className="alert info">{t("這是管理員設定的臨時密碼，請先設定你自己的密碼。")}</div>}
+      {done && <div className="alert ok">{t("密碼已更新，其他裝置已登出。")}</div>}
       <ErrorBox error={error} />
-      {mismatch && <div className="alert error">兩次輸入的新密碼不一致</div>}
-      <Field label="目前密碼">
+      {mismatch && <div className="alert error">{t("兩次輸入的新密碼不一致")}</div>}
+      <Field label={t("目前密碼")}>
         <input type="password" autoComplete="current-password" required value={current} onChange={(e) => setCurrent(e.target.value)} />
       </Field>
-      <Field label="新密碼" hint="至少 12 個字元，不可包含 Email 名稱">
+      <Field label={t("新密碼")} hint={t("至少 12 個字元，不可包含 Email 名稱")}>
         <input type="password" autoComplete="new-password" required minLength={12} value={next} onChange={(e) => setNext(e.target.value)} />
       </Field>
-      <Field label="再輸入一次新密碼">
+      <Field label={t("再輸入一次新密碼")}>
         <input type="password" autoComplete="new-password" required value={confirm} onChange={(e) => setConfirm(e.target.value)} />
       </Field>
       <button className="btn primary" disabled={busy}>
-        {busy ? "處理中…" : "更新密碼"}
+        {busy ? t("處理中…") : t("更新密碼")}
       </button>
     </form>
   );
@@ -198,7 +201,7 @@ export function PasswordChangeForm({ onDone, forced }: { onDone?: () => void; fo
 
 export function ForcedPasswordPage() {
   return (
-    <AuthCard title="設定新密碼">
+    <AuthCard title={t("設定新密碼")}>
       <PasswordChangeForm forced />
     </AuthCard>
   );
@@ -244,23 +247,23 @@ export function MfaSetupForm({ onDone }: { onDone?: () => void }) {
       <ErrorBox error={error} />
       {!setup ? (
         <>
-          <p className="muted small">使用 Google Authenticator、Microsoft Authenticator 或 1Password 等 App，登入時除了密碼還需要輸入 App 上的 6 位數字。</p>
+          <p className="muted small">{t("使用 Google Authenticator、Microsoft Authenticator 或 1Password 等 App，登入時除了密碼還需要輸入 App 上的 6 位數字。")}</p>
           <button className="btn primary" onClick={start}>
-            開始設定
+            {t("開始設定")}
           </button>
         </>
       ) : (
         <form onSubmit={enable}>
-          <p className="small">1. 用驗證器 App 掃描 QR Code：</p>
-          {qr && <img className="qr" src={qr} width={200} height={200} alt="雙因素驗證 QR Code" />}
+          <p className="small">{t("1. 用驗證器 App 掃描 QR Code：")}</p>
+          {qr && <img className="qr" src={qr} width={200} height={200} alt={t("雙因素驗證 QR Code")} />}
           <p className="small muted">
-            無法掃描時手動輸入金鑰：<span className="mono">{setup.secret}</span>
+            {t("無法掃描時手動輸入金鑰：")}<span className="mono">{setup.secret}</span>
           </p>
-          <Field label="2. 輸入 App 顯示的 6 位數字">
+          <Field label={t("2. 輸入 App 顯示的 6 位數字")}>
             <input inputMode="numeric" maxLength={6} required value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))} autoFocus />
           </Field>
           <button className="btn primary" disabled={busy || code.length !== 6}>
-            {busy ? "處理中…" : "啟用雙因素驗證"}
+            {busy ? t("處理中…") : t("啟用雙因素驗證")}
           </button>
         </form>
       )}
@@ -271,11 +274,11 @@ export function MfaSetupForm({ onDone }: { onDone?: () => void }) {
 export function ForcedMfaPage() {
   const { logout } = useAuth();
   return (
-    <AuthCard title="設定雙因素驗證">
-      <div className="alert info">管理員帳號必須啟用雙因素驗證才能使用系統。</div>
+    <AuthCard title={t("設定雙因素驗證")}>
+      <div className="alert info">{t("管理員帳號必須啟用雙因素驗證才能使用系統。")}</div>
       <MfaSetupForm />
       <button className="btn" style={{ marginTop: 12 }} onClick={() => void logout()}>
-        登出
+        {t("登出")}
       </button>
     </AuthCard>
   );
