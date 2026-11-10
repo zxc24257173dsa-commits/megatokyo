@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider, useAuth } from "./auth";
+import { ShowReportPage, ShowReportsPage } from "./pages/ShowReportPages";
 import Layout from "./components/Layout";
 import { Loading } from "./components/ui";
 import { ForcedMfaPage, ForcedPasswordPage, LoginPage } from "./pages/AuthPages";
@@ -43,6 +44,8 @@ function Gate() {
         <Route path="imports/:id" element={<ImportDetailPage />} />
         <Route path="orders" element={<OrdersPage />} />
         <Route path="orders/:id" element={<OrderDetailPage />} />
+        <Route path="reports/shows" element={<ShowReportsPage />} />
+        <Route path="reports/shows/:id" element={<ShowReportPage />} />
         <Route path="settings/whatnot" element={<WhatnotSettingsPage />} />
         <Route path="purchasing" element={<PurchaseBatchesPage />} />
         <Route path="purchasing/:id" element={<PurchaseBatchPage />} />

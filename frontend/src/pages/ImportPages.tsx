@@ -7,7 +7,7 @@ import { ErrorBox, Loading, fmtDateTime, fmtInt, fmtUsd } from "../components/ui
 
 interface Job {
   id: number;
-  import_type: "purchase_cost" | "sku_master" | "whatnot_orders";
+  import_type: "purchase_cost" | "sku_master" | "whatnot_orders" | "whatnot_financial";
   filename: string;
   status: string;
   created_at: string;
@@ -27,7 +27,7 @@ interface Row {
   normalized: Record<string, any>;
 }
 
-const TYPE_LABEL: Record<string, string> = { purchase_cost: "採購成本", sku_master: "商品主檔", whatnot_orders: "Whatnot 訂單（CSV）" };
+const TYPE_LABEL: Record<string, string> = { purchase_cost: "採購成本", sku_master: "商品主檔", whatnot_orders: "Whatnot 訂單（CSV）", whatnot_financial: "Whatnot 財務報表（CSV）" };
 const STATUS: Record<string, [string, string]> = {
   uploaded: ["已上傳", ""],
   parsed: ["需要對應欄位", "warn"],
@@ -46,14 +46,15 @@ const ACTION: Record<string, [string, string]> = {
   import_unmapped: ["將匯入・待對應 SKU", "warn"],
   import_unpaid: ["將匯入（未付款／取消）", ""],
   skip_existing: ["已在系統中", ""],
+  import_order_missing: ["將匯入・訂單不在系統", "warn"],
   error: ["錯誤", "danger"],
 };
 
 export function ImportsPage() {
   const { can } = useAuth();
   const nav = useNavigate();
-  const PERM = { purchase_cost: "import.cost", sku_master: "catalog.edit", whatnot_orders: "import.sales" } as const;
-  const types = (["purchase_cost", "sku_master", "whatnot_orders"] as const).filter((t) => can(PERM[t]));
+  const PERM = { purchase_cost: "import.cost", sku_master: "catalog.edit", whatnot_orders: "import.sales", whatnot_financial: "import.sales" } as const;
+  const types = (["purchase_cost", "sku_master", "whatnot_orders", "whatnot_financial"] as const).filter((t) => can(PERM[t]));
   const [type, setType] = useState<string>(types[0] ?? "purchase_cost");
   const [file, setFile] = useState<File | null>(null);
   const list = useQuery({ queryKey: ["imports"], queryFn: () => api<Job[]>("/imports") });
@@ -138,7 +139,10 @@ export function ImportDetailPage() {
   const by = j.stats.by_action ?? {};
   const isCost = j.import_type === "purchase_cost";
   const isOrders = j.import_type === "whatnot_orders";
-  const willImport = isOrders
+  const isFin = j.import_type === "whatnot_financial";
+  const willImport = isFin
+    ? (by.import ?? 0) + (by.import_order_missing ?? 0)
+    : isOrders
     ? (by.import ?? 0) + (by.import_unmapped ?? 0) + (by.import_unpaid ?? 0)
     : isCost ? (by.import ?? 0) + (by.import_new_sku ?? 0) : (by.create ?? 0) + (by.update ?? 0);
   const open = j.status === "validated" || j.status === "parsed";
@@ -158,22 +162,25 @@ export function ImportDetailPage() {
       {j.status !== "parsed" && (
         <div className="tiles">
           <div className="tile"><div className="label">{j.status === "committed" ? "已匯入" : "將匯入"}</div><div className="value">{fmtInt(willImport)}</div>
-            <div className="sub">{isOrders ? `待對應 SKU ${fmtInt(by.import_unmapped ?? 0)}・未付款 ${fmtInt(by.import_unpaid ?? 0)}` : isCost ? `其中新 SKU ${fmtInt(by.import_new_sku ?? 0)}` : `新增 ${fmtInt(by.create ?? 0)}・更新 ${fmtInt(by.update ?? 0)}`}</div></div>
+            <div className="sub">{isFin ? `訂單不在系統 ${fmtInt(by.import_order_missing ?? 0)}` : isOrders ? `待對應 SKU ${fmtInt(by.import_unmapped ?? 0)}・未付款 ${fmtInt(by.import_unpaid ?? 0)}` : isCost ? `其中新 SKU ${fmtInt(by.import_new_sku ?? 0)}` : `新增 ${fmtInt(by.create ?? 0)}・更新 ${fmtInt(by.update ?? 0)}`}</div></div>
           <div className="tile"><div className="label">錯誤</div><div className="value" style={{ color: j.stats.errors ? "var(--danger)" : undefined }}>{fmtInt(j.stats.errors)}</div><div className="sub">需修正或略過</div></div>
           <div className="tile"><div className="label">提醒</div><div className="value">{fmtInt(j.stats.warnings)}</div><div className="sub">可匯入，請確認</div></div>
-          <div className="tile"><div className="label">略過</div><div className="value">{fmtInt((by.skip_example ?? 0) + (by.unchanged ?? 0) + (by.skip_existing ?? 0))}</div><div className="sub">{isOrders ? "已在系統中的訂單" : `範例列${isCost ? "" : "・沒有變更"}`}</div></div>
+          <div className="tile"><div className="label">略過</div><div className="value">{fmtInt((by.skip_example ?? 0) + (by.unchanged ?? 0) + (by.skip_existing ?? 0))}</div><div className="sub">{isFin ? "已入帳的交易" : isOrders ? "已在系統中的訂單" : `範例列${isCost ? "" : "・沒有變更"}`}</div></div>
         </div>
       )}
 
       {j.status === "committed" && j.stats.result && (
         <div className="alert ok">
-          匯入完成：{isOrders
+          匯入完成：{isFin
+            ? `${j.stats.result.transactions} 筆交易，入帳 ${j.stats.result.booked} 筆（費用 ${fmtUsd(j.stats.result.fees_usd)}、退款 ${fmtUsd(j.stats.result.refunds_usd)}）${j.stats.result.order_not_in_erp ? `；${j.stats.result.order_not_in_erp} 筆訂單不在系統，訂單進來後自動補上` : ""}${j.stats.result.needs_review ? `；${j.stats.result.needs_review} 筆需要確認` : ""}。`
+            : isOrders
             ? `${j.stats.result.orders} 筆訂單（${j.stats.result.lines} 件商品），已付款成交額 ${fmtUsd(j.stats.result.revenue_usd)}${j.stats.result.unmapped_lines ? `；${j.stats.result.unmapped_lines} 件待對應 SKU` : ""}。`
             : isCost
             ? `${j.stats.result.batches} 個採購批次、${j.stats.result.lines} 筆成本，落地成本合計 ${fmtUsd(j.stats.result.landed_total_usd)}${j.stats.result.new_skus ? `，新增 ${j.stats.result.new_skus} 個 SKU` : ""}。成本已入帳；商品從日本寄出時，到「採購批次」按「寄出」，美國收到後按「簽收」。`
             : `新增 ${j.stats.result.created} 個 SKU、更新 ${j.stats.result.updated} 個 SKU。`}
           {isCost && <> <Link to="/purchasing">前往採購批次 →</Link></>}
           {isOrders && <> <Link to="/orders?tab=unmapped">前往對應商品 →</Link></>}
+          {isFin && <> <Link to="/reports/shows">前往直播損益 →</Link></>}
         </div>
       )}
 
@@ -197,7 +204,7 @@ export function ImportDetailPage() {
             <button className="btn primary" disabled={commit.isPending || willImport === 0} onClick={() => commit.mutate()}>
               {commit.isPending ? "匯入中…" : `確認匯入 ${willImport} 列`}
             </button>
-            <span className="small muted">{isOrders ? "買家帳號、地址不會保存；匯入完成後原始檔案會刪除。" : isCost ? "匯入的是成本紀錄；確認後不可修改，也不會直接增加庫存。" : "庫存與成本欄位不會從商品主檔匯入。"}</span>
+            <span className="small muted">{isFin ? "每筆交易只入帳一次，和 API 同步重疊也不會重複；買家名稱不會保存，匯入完成後原始檔案會刪除。" : isOrders ? "買家帳號、地址不會保存；匯入完成後原始檔案會刪除。" : isCost ? "匯入的是成本紀錄；確認後不可修改，也不會直接增加庫存。" : "庫存與成本欄位不會從商品主檔匯入。"}</span>
           </div>
         </div>
       )}

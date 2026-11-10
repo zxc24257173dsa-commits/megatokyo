@@ -220,3 +220,17 @@ def test_show_pnl(api, db, setup):
     assert d["skus"][0]["units"] == 3 and d["skus"][0]["cogs"] == -80
     # the per-SKU rows add up to the show (the tip has no order -> unallocated)
     assert round(sum(x["gross_profit"] for x in d["skus"]) + d["unallocated"]["other"], 2) == s["gross_profit"]
+
+
+def test_unmapped_auctions_of_one_product_are_one_report_row(db, setup):
+    for n in (1, 2, 3):
+        P.process_order(db, W.order(f"UA-{n}", subtotal=10, show_id=SHOW),
+                        [W.item(f"UA-I{n}", f"UA-{n}", price=10, product_id="WP-1", title=f"Mystery Promo #{n}")],
+                        source="api")
+    P.process_order(db, W.order("UA-G", subtotal=0, show_id=SHOW),
+                    [W.item("UA-IG", "UA-G", price=0, product_id="WP-1", title="Mystery Promo #4")], source="api")
+    from app.services import livestream_report as R
+    ls_id = db.execute(text("SELECT id FROM livestreams WHERE external_id = :s"), {"s": SHOW}).scalar_one()
+    d = R.show_detail(db, ls_id)
+    assert [(r["name"], r["units"], r["sales"]) for r in d["skus"]] == [("Mystery Promo", 4, 30.0)]
+    assert d["coverage"]["giveaways"] == 1

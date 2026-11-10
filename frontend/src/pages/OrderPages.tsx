@@ -102,7 +102,7 @@ export function OrdersPage() {
             <div className="tiles" style={{ gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }}>
               <div className="tile"><div className="label">已付款訂單</div><div className="value">{fmtInt(currentShow.paid_orders)}</div><div className="sub">共 {fmtInt(currentShow.orders)} 筆</div></div>
               <div className="tile"><div className="label">商品成交額</div><div className="value">{fmtUsd(currentShow.paid_sales)}</div><div className="sub">不含運費、稅</div></div>
-              <div className="tile"><div className="label">直播狀態</div><div className="value" style={{ fontSize: 18 }}>{currentShow.status === "ended" ? "已結束" : currentShow.status}</div><div className="sub">損益分析在 Phase 6–7</div></div>
+              <div className="tile"><div className="label">直播狀態</div><div className="value" style={{ fontSize: 18 }}>{currentShow.status === "ended" ? "已結束" : currentShow.status}</div><div className="sub"><Link to={`/reports/shows/${currentShow.id}`}>看這場的損益 →</Link></div></div>
             </div>
           )}
           <ErrorBox error={orders.error} />
@@ -324,6 +324,7 @@ interface WhatnotStatus {
   webhook_url: string;
   webhook_events: Record<string, number>;
   open_exceptions: number;
+  financial: { transactions: Record<string, { count: number; amount: number }>; upstream_changed: number };
   sync_runs: { id: number; kind: string; status: string; started_at: string; finished_at: string | null; stats: Record<string, any>; error: string | null }[];
 }
 
@@ -358,11 +359,13 @@ export function WhatnotSettingsPage() {
       <div className="page-head"><h1>Whatnot 串接</h1></div>
       {notice && <div className="alert ok">{notice}</div>}
       <ErrorBox error={save.error ?? test.error ?? sync.error} />
-      <div className="tiles" style={{ gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }}>
+      <div className="tiles">
         <div className="tile"><div className="label">連線</div><div className="value" style={{ fontSize: 18 }}>{s.connected ? "已連線" : s.token_source ? "待測試" : "未設定"}</div><div className="sub">{s.seller?.name ?? "—"}</div></div>
         <div className="tile"><div className="label">即時通知（Webhook）</div><div className="value" style={{ fontSize: 18 }}>{s.webhook_secret_configured ? "已設定" : "未設定"}</div>
           <div className="sub">已處理 {fmtInt(s.webhook_events.processed ?? 0)}・失敗 {fmtInt(s.webhook_events.failed ?? 0)}</div></div>
         <div className="tile"><div className="label">需要處理的訂單商品</div><div className="value">{fmtInt(s.open_exceptions)}</div><div className="sub"><Link to="/orders?tab=exceptions">查看</Link></div></div>
+        <div className="tile"><div className="label">財務報表交易</div><div className="value">{fmtInt(s.financial.transactions.booked?.count ?? 0)}</div>
+          <div className="sub">已入帳{s.financial.transactions.order_not_in_erp ? `・訂單不在系統 ${fmtInt(s.financial.transactions.order_not_in_erp.count)}` : ""}{(s.financial.transactions.needs_review?.count ?? 0) + s.financial.upstream_changed > 0 ? `・需確認 ${fmtInt((s.financial.transactions.needs_review?.count ?? 0) + s.financial.upstream_changed)}` : ""}</div></div>
       </div>
       <div className="grid-2">
         <form className="card" onSubmit={(e) => (e.preventDefault(), save.mutate())}>
@@ -381,7 +384,7 @@ export function WhatnotSettingsPage() {
         </form>
         <div className="card">
           <h2>同步</h2>
-          <p className="small muted" style={{ marginTop: 0 }}>即時通知會自動更新；同步用來補漏（例如伺服器維護期間的訂單）。正式上線後會每小時自動執行。</p>
+          <p className="small muted" style={{ marginTop: 0 }}>即時通知會自動更新；同步用來補漏（例如伺服器維護期間的訂單），並向 Whatnot 申請最近 14 天的財務報表（佣金、手續費、退款）。正式上線後會每小時自動執行。</p>
           <div className="row">
             <select value={days} onChange={(e) => setDays(e.target.value)} style={{ width: "auto" }} aria-label="同步天數">
               {["1", "3", "7", "30"].map((d) => <option key={d} value={d}>最近 {d} 天</option>)}
@@ -395,7 +398,7 @@ export function WhatnotSettingsPage() {
                 <tr key={r.id}>
                   <td className="small">{fmtDateTime(r.started_at)}</td>
                   <td><span className={`badge ${r.status === "succeeded" ? "ok" : r.status === "running" ? "info" : "danger"}`}>{r.status === "succeeded" ? "成功" : r.status === "running" ? "進行中" : "失敗"}</span></td>
-                  <td className="small">{r.error ?? `訂單 ${r.stats.orders ?? 0}・出貨 ${r.stats.shipments ?? 0}・直播 ${(r.stats.shows ?? 0) + (r.stats.show_details ?? 0)}${r.stats.failed ? `・失敗 ${r.stats.failed}` : ""}`}</td>
+                  <td className="small">{r.error ?? `訂單 ${r.stats.orders ?? 0}・出貨 ${r.stats.shipments ?? 0}・直播 ${(r.stats.shows ?? 0) + (r.stats.show_details ?? 0)}${r.stats.financial ? `・財務交易新增 ${r.stats.financial.new ?? 0}${r.stats.financial.still_generating ? "（報表產生中，下次同步完成）" : ""}` : ""}${r.stats.failed ? `・失敗 ${r.stats.failed}` : ""}`}</td>
                 </tr>
               ))}
             </tbody>

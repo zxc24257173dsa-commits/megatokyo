@@ -19,8 +19,9 @@
 | 15 | 成本試算表 | 匯率寫「1 USD = 150 JPY」；運費日幣、關稅 USD；一個批次可含多個 SKU | docs/04 |
 | 17 | 拆盒成本 | **平均分攤**：盒子成本 ÷ 盒內件數 | docs/05 |
 | 18 | 訂單 SKU 對應 | Whatnot 商品名稱去掉 #編號後對應一次 | docs/05 |
+| 19 | 直播費用 | 只用 Whatnot 財務報表的真實數字，不用費率估算；未到的標示為未完整 | docs/06 |
 | 16 | 日本倉 | 不使用（`ERP_JAPAN_WAREHOUSE_ENABLED=false`），可日後開啟 | docs/04 |
 
 ## 尚待提供
 - 商品成本試算表（Phase 4 前需要）：決定 `purchase_lines` 最終欄位與欄位對應。
-- Whatnot 後台匯出檔樣本（訂單 / 直播 / Payout）：用於 CSV 備援與費用來源。
+- ~~Whatnot 匯出檔~~：訂單 CSV 已用真實檔驗證（docs/05）；費用改用 API 財務報表（docs/06）。

@@ -14,11 +14,12 @@ interface Item {
 const ITEMS: Item[] = [
   { to: "/", label: "庫存總覽", icon: "box", perm: "inventory.view", mobile: true },
   { to: "/orders", label: "訂單", icon: "receipt", perm: "orders.view", mobile: true },
+  { to: "/reports/shows", label: "直播損益", icon: "chart", perm: "finance.view_livestream", mobile: true },
   { to: "/purchasing", label: "採購批次", icon: "truck", perm: "inventory.view", mobile: true },
   { to: "/imports", label: "試算表匯入", icon: "upload", perm: ["import.cost", "catalog.edit", "import.sales"] },
   { to: "/products/new", label: "新增商品", icon: "tag", perm: "catalog.edit" },
   { to: "/stock/operations", label: "入庫/調整", icon: "sliders", perm: "inventory.view" },
-  { to: "/stock/counts", label: "盤點", icon: "clipboard", perm: "inventory.view", mobile: true },
+  { to: "/stock/counts", label: "盤點", icon: "clipboard", perm: "inventory.view" },
   { to: "/users", label: "使用者", icon: "users", perm: "users.manage" },
   { to: "/settings/whatnot", label: "Whatnot 串接", icon: "link", perm: "integration.manage" },
   { to: "/account", label: "我的帳號", icon: "user", mobile: true },

@@ -8,6 +8,7 @@
 - 商品與庫存：[`docs/03-catalog-and-inventory.md`](docs/03-catalog-and-inventory.md)
 - 成本匯入：[`docs/04-cost-import.md`](docs/04-cost-import.md)
 - Whatnot 訂單同步、拆盒：[`docs/05-whatnot-orders.md`](docs/05-whatnot-orders.md)
+- 單場直播損益、Whatnot 財務報表：[`docs/06-show-pnl.md`](docs/06-show-pnl.md)
 
 ## 目前進度
 

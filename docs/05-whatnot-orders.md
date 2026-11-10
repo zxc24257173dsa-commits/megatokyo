@@ -13,8 +13,8 @@
 | 訂單、訂單商品 | API `/orders`、`/orders/{id}/items`，Webhook `orders.created/updated` |
 | 出貨狀態 | API `/shipments`，Webhook `shipments.*` |
 | 直播場次 | API `/shows/{id}`，Webhook `shows.*`；訂單帶 `show_id` |
-| 直播數據 | API `/analytics/shows/{id}`（Phase 6） |
-| 平台佣金、手續費、退款 | 財務報表 `seller_financial_report`（Phase 6） |
+| 直播數據 | API `/analytics/shows/{id}`（[docs/06](06-show-pnl.md)） |
+| 平台佣金、手續費、退款 | 財務報表 `seller_financial_report`（[docs/06](06-show-pnl.md)） |
 
 ## 訂單如何影響庫存與帳
 

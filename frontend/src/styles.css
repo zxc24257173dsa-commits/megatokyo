@@ -114,6 +114,8 @@ input[type="checkbox"] { width: auto; min-height: 0; }
 .alert { border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; font-size: 14px; }
 .alert.error { background: var(--danger-soft); color: var(--danger); }
 .alert.ok { background: var(--ok-soft); color: var(--ok); }
+.alert.warn { background: var(--warn-soft); color: var(--text, inherit); border-left: 3px solid var(--warn); }
+details.card summary { cursor: pointer; }
 .alert.info { background: var(--info-soft); color: var(--info); }
 
 .badge { display: inline-block; padding: 1px 8px; border-radius: 99px; font-size: 12px; font-weight: 600; background: var(--surface-2); color: var(--muted); white-space: nowrap; }

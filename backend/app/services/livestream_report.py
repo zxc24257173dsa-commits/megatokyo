@@ -28,6 +28,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.errors import AppError
+from app.integrations.whatnot.processing import clean_title
 
 ZERO = Decimal(0)
 GROUPS = {
@@ -187,9 +188,10 @@ def show_detail(db: Session, livestream_id: int) -> dict:
             unallocated[g] += e["amount_base"]
     skus: dict = {}
     for ln in lines:
-        key = ln["sku_id"] or f"unmapped:{ln['title_snapshot']}"
+        title = clean_title(ln["title_snapshot"])  # "Promo #12" -> "Promo": one row per product, not per auction
+        key = ln["sku_id"] or f"unmapped:{title}"
         row = skus.setdefault(key, {"sku_id": ln["sku_id"], "sku_code": ln["sku_code"],
-                                    "name": ln["name"] or ln["title_snapshot"], "mapped": ln["sku_id"] is not None,
+                                    "name": ln["name"] or title, "mapped": ln["sku_id"] is not None,
                                     "units": 0, "units_without_cogs": 0, "_b": defaultdict(lambda: ZERO)})
         row["units"] += ln["qty"]
         row["units_without_cogs"] += ln["qty"] if ln["stock_state"] != "shipped" else 0
@@ -231,7 +233,9 @@ def show_detail(db: Session, livestream_id: int) -> dict:
         ours_vs_whatnot = {
             "whatnot_sales": metrics.get("sales"), "ours_sales": summary["sales"] + summary["discounts"],
             "whatnot_estimated_earnings": metrics.get("estimated_earnings"), "ours_earnings": round(ours_earnings, 2),
-            "whatnot_orders": metrics.get("orders_count"), "ours_orders": orders.get("paid_orders", 0),
+            # Whatnot's orders_count leaves giveaways out (verified: 292 paid - 56 giveaways = 236)
+            "whatnot_orders": metrics.get("orders_count"),
+            "ours_orders": orders.get("paid_orders", 0) - orders.get("giveaways", 0),
         }
     return {
         "livestream": dict(ls), "summary": summary, "coverage": _coverage(orders),

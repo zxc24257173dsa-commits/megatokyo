@@ -38,6 +38,7 @@ const paths: Record<string, string> = {
   truck: "M1 4h14v12H1zM15 9h4l3 3v4h-7M5.5 19.5a1.5 1.5 0 100-3 1.5 1.5 0 000 3zM18.5 19.5a1.5 1.5 0 100-3 1.5 1.5 0 000 3z",
   receipt: "M4 2h16v20l-3-2-3 2-3-2-3 2-3-2-1 .7V2zM8 7h8M8 11h8M8 15h5",
   link: "M10 13a5 5 0 007.5.5l3-3a5 5 0 00-7-7l-1.7 1.7M14 11a5 5 0 00-7.5-.5l-3 3a5 5 0 007 7l1.7-1.7",
+  chart: "M3 3v18h18M7 15l4-4 3 3 6-6M20 8v4h-4",
   upload: "M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12",
 };
 export function Icon({ name }: { name: keyof typeof paths | string }) {
