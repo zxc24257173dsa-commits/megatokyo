@@ -187,3 +187,4 @@ table.data.pnl td:first-child, table.data.pnl th:first-child { position: sticky;
 .chart-tip { position: absolute; transform: translateX(-50%); background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); border-radius: 8px; padding: 8px 10px; font-size: 12px; pointer-events: none; white-space: nowrap; z-index: 2; }
 .spark-line { fill: none; stroke: var(--chart-1); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
 .spark-dot { fill: var(--chart-1); stroke: var(--surface); stroke-width: 2; }
+.linklike { background: none; border: 0; padding: 0; color: inherit; text-decoration: underline; cursor: pointer; font: inherit; }

@@ -147,7 +147,7 @@ def overview(db: Session, start: date, end: date, granularity: str = "week", gro
 
 # ---------- stock demand (per stocked SKU and day) ----------
 
-def _demand_sql(where_sku: str = "") -> str:
+def _demand_sql(where_sku: str = "", include_box_openings: bool = True) -> str:
     return f"""
     WITH paid AS (
         SELECT l.sku_id, l.qty, (o.paid_at AT TIME ZONE :tz)::date AS d
@@ -161,15 +161,16 @@ def _demand_sql(where_sku: str = "") -> str:
           JOIN sku_bundle_components bc ON bc.bundle_sku_id = p.sku_id
         UNION ALL
         SELECT b.box_sku_id, (b.created_at AT TIME ZONE :tz)::date, b.qty FROM box_openings b
-         WHERE b.created_at >= :s AND b.created_at < :e
+         WHERE b.created_at >= :s AND b.created_at < :e AND :boxes
     )
     SELECT sku_id, d, sum(units) AS units FROM d {where_sku} GROUP BY 1, 2"""
 
 
-def daily_demand(db: Session, start: date, end: date, sku_id: int | None = None) -> dict[int, dict[date, int]]:
+def daily_demand(db: Session, start: date, end: date, sku_id: int | None = None,
+                 include_box_openings: bool = True) -> dict[int, dict[date, int]]:
     s, e = _bounds(start, end)
     rows = db.execute(text(_demand_sql("WHERE sku_id = :sku" if sku_id else "")),
-                      {"tz": _tz(), "s": s, "e": e, "sku": sku_id}).all()
+                      {"tz": _tz(), "s": s, "e": e, "sku": sku_id, "boxes": include_box_openings}).all()
     out: dict[int, dict[date, int]] = defaultdict(dict)
     for r in rows:
         out[r.sku_id][r.d] = int(r.units)

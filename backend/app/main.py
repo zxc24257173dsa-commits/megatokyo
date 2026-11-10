@@ -8,7 +8,9 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.v1 import auth, catalog, finance, health, imports, inventory, logistics, reports, users, whatnot
+from app.api.v1 import (
+    auth, catalog, finance, health, imports, inventory, logistics, replenishment, reports, users, whatnot,
+)
 from app.core.config import get_settings
 from app.core.errors import AppError, register_exception_handlers
 from app.core.logging import configure_logging, request_id_var
@@ -67,6 +69,7 @@ app.include_router(whatnot.router, prefix="/api/v1")
 app.include_router(reports.router, prefix="/api/v1")
 app.include_router(finance.router, prefix="/api/v1")
 app.include_router(logistics.router, prefix="/api/v1")
+app.include_router(replenishment.router, prefix="/api/v1")
 
 
 # ---------- single-page app (production) ----------

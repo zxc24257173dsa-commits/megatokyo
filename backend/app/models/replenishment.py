@@ -74,6 +74,7 @@ class ReplenishmentRun(IdMixin, CreatedMixin, Base):
     __tablename__ = "replenishment_runs"
 
     data_as_of: Mapped[date] = mapped_column(Date, nullable=False)  # last COMPLETE business day used
+    note: Mapped[str | None] = mapped_column(Text)
     params_snapshot: Mapped[dict] = mapped_column(JSONB, nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="completed")
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
@@ -107,6 +108,12 @@ class ReplenishmentSuggestion(IdMixin, Base):
     suggested_purchase_qty: Mapped[int] = mapped_column(Integer, nullable=False)
     status_color: Mapped[str] = mapped_column(String(10), nullable=False)
     explanation: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    # Phase 10 (direct ship JP -> US): what to do for this SKU and why
+    action: Mapped[str] = mapped_column(String(20), nullable=False, server_default="none")  # buy / open_box / none
+    on_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")  # purchased, not shipped yet
+    boxes_to_open: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    source_box_sku_id: Mapped[int | None] = mapped_column(ForeignKey("skus.id"))
+    latest_order_date: Mapped[date | None] = mapped_column(Date)
     override_ship_qty: Mapped[int | None] = mapped_column(Integer)
     override_purchase_qty: Mapped[int | None] = mapped_column(Integer)
     override_reason: Mapped[str | None] = mapped_column(Text)
@@ -117,6 +124,7 @@ class ReplenishmentSuggestion(IdMixin, Base):
     __table_args__ = (
         UniqueConstraint("run_id", "sku_id"),
         check_in("status_color", ("red", "orange", "yellow", "green"), "color_valid"),
+        check_in("action", ("buy", "open_box", "none"), "action_valid"),
         CheckConstraint("suggested_ship_qty >= 0 AND suggested_purchase_qty >= 0", name="suggest_nonneg"),
         CheckConstraint(
             "(override_ship_qty IS NULL AND override_purchase_qty IS NULL) OR override_reason IS NOT NULL",

@@ -18,6 +18,7 @@ const ITEMS: Item[] = [
   { to: "/reports/trends", label: "銷售趨勢", icon: "trend", perm: "orders.view" },
   { to: "/reports/pnl", label: "損益表", icon: "chart", perm: "finance.view" },
   { to: "/expenses", label: "營運費用", icon: "wallet", perm: ["expense.create", "finance.view"] },
+  { to: "/replenishment", label: "補貨建議", icon: "refill", perm: "replenishment.view" },
   { to: "/purchasing", label: "採購批次", icon: "cart", perm: "inventory.view" },
   { to: "/logistics", label: "物流", icon: "truck", perm: "inventory.view", mobile: true },
   { to: "/imports", label: "試算表匯入", icon: "upload", perm: ["import.cost", "catalog.edit", "import.sales"] },
