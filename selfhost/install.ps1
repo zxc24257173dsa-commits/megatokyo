@@ -81,7 +81,9 @@ if ($LASTEXITCODE -ne 0) { Fail "啟動失敗。請把這個視窗截圖給 Clau
 Done "系統已啟動"
 
 # ---------- 4. First admin ----------
-if ($first) {
+docker compose run --rm --no-deps app python -m app.cli has-admin *> $null
+$needAdmin = ($LASTEXITCODE -eq 3)
+if ($needAdmin) {
     Say "4/5 建立您的管理員帳號"
     Write-Host "（密碼至少 12 個字元，不能包含 Email @ 前面的名字。第一次登入時，系統會請您用手機的驗證器 App 掃 QR Code。）"
     $email = Read-Host "您的 Email"
@@ -92,6 +94,7 @@ if ($first) {
         $a = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($p1))
         $b = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($p2))
         if ($a -ne $b) { Write-Host "兩次密碼不一樣，請重新輸入。" -ForegroundColor Red; continue }
+        $OutputEncoding = New-Object System.Text.UTF8Encoding($false)
         $a | docker compose run --rm -T --no-deps app python -m app.cli create-admin --email $email --name $name --password-stdin --if-missing
         $ok = ($LASTEXITCODE -eq 0)
         $a = $null; $b = $null

@@ -110,3 +110,21 @@ def test_production_settings_refuse_unsafe_values():
                 {"cron_secret": "short"}, {"cookie_secure": False}, {"jwt_secret": Settings().jwt_secret}):
         with pytest.raises(ValidationError):
             Settings(**{**good, **bad})
+
+
+def test_cli_admin_from_windows_powershell_pipe(api, db, monkeypatch, capsys):
+    """PowerShell pipes 'password\\r\\n' (sometimes with a BOM); the password must be taken as typed."""
+    import io
+    from app import cli
+    from app.db import session as dbs
+    from sqlalchemy.orm import sessionmaker
+    monkeypatch.setattr(cli, "SessionLocal", sessionmaker(bind=db.connection(), join_transaction_mode="create_savepoint", expire_on_commit=False))
+    assert cli.main(["has-admin"]) == 3
+    monkeypatch.setattr("sys.stdin", io.StringIO("﻿Kanagawa-Wave-2026!\r\n"))
+    assert cli.main(["create-admin", "--email", "boss@megatokyo.test", "--name", "Boss", "--password-stdin"]) == 0
+    assert cli.main(["has-admin"]) == 0
+    assert cli.main(["create-admin", "--email", "boss@megatokyo.test", "--name", "Boss", "--password-stdin",
+                     "--if-missing"]) == 0
+    r = api.post("/api/v1/auth/login", json={"email": "boss@megatokyo.test", "password": "Kanagawa-Wave-2026!"})
+    assert r.status_code == 200, r.text
+    del dbs

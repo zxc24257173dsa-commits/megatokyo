@@ -16,7 +16,8 @@ from app.services import users
 
 def _read_password(from_stdin: bool) -> str:
     if from_stdin:
-        return sys.stdin.readline().rstrip("\n")
+        # Windows PowerShell pipes "password\r\n" (and may add a BOM): drop those, keep the password as typed
+        return sys.stdin.readline().lstrip("\ufeff").rstrip("\r\n")
     pw = getpass.getpass("Password: ")
     if pw != getpass.getpass("Repeat password: "):
         sys.exit("Passwords do not match")
@@ -48,6 +49,16 @@ def create_admin(args) -> int:
     return 0
 
 
+def has_admin(args) -> int:
+    """Exit 0 if an active admin exists, 3 if not (used by the self-host installer)."""
+    from sqlalchemy import text
+    with SessionLocal() as db:
+        n = db.execute(text("""SELECT count(*) FROM users u JOIN user_roles ur ON ur.user_id = u.id
+                               JOIN roles r ON r.id = ur.role_id WHERE r.code = 'admin' AND u.is_active""")).scalar_one()
+    print("admin exists" if n else "no admin yet")
+    return 0 if n else 3
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="python -m app.cli")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -60,6 +71,8 @@ def main(argv=None) -> int:
     p.add_argument("--google-only", action="store_true", help="No password; sign in with Google only")
     p.add_argument("--if-missing", action="store_true", help="Do nothing (exit 0) if this email already has an account")
     p.set_defaults(func=create_admin)
+    h = sub.add_parser("has-admin", help="Exit 0 if an active admin exists, 3 if not")
+    h.set_defaults(func=has_admin)
     args = parser.parse_args(argv)
     return args.func(args)
 
