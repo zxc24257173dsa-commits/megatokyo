@@ -47,6 +47,19 @@ Done "Docker Desktop 正常"
 
 # ---------- 2. Secrets (first time only) ----------
 $first = -not (Test-Path ".env")
+# A database left from an earlier install whose .env (its key) is gone can never be opened again.
+if ($first) {
+    docker volume inspect megatokyo_pgdata *> $null
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host ""
+        Write-Host "找到之前安裝留下的資料庫，但它的鑰匙檔（.env）不見了，所以打不開。" -ForegroundColor Yellow
+        Write-Host "如果您還沒開始正式使用（裡面沒有重要資料），可以清掉重新建立。" -ForegroundColor Yellow
+        Write-Host "如果裡面已經有資料：請先不要繼續，把舊資料夾裡的 .env 放回這個 selfhost 資料夾，或找 backups 裡的「金鑰」檔改名為 .env。" -ForegroundColor Yellow
+        $ans = Read-Host "要清掉舊資料庫、重新建立嗎？輸入 Y 再按 Enter（其他鍵 = 取消）"
+        if ($ans -ne "Y" -and $ans -ne "y") { Fail "已取消，沒有刪除任何東西。" }
+        docker compose down -v
+    }
+}
 New-Item -ItemType Directory -Force -Path "data\files", "backups" | Out-Null
 if ($first) {
     Say "2/5 第一次使用：產生這台電腦專用的密鑰"
