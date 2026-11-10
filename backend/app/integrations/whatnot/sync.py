@@ -62,11 +62,16 @@ def sync_shipments(db: Session, client: WhatnotClient, cutoff: datetime, stats: 
             break
         seen.add(sh["id"])
         _each(db, stats, "shipments", lambda s=sh: P.process_shipment(db, s, client.shipment_items(s["id"]), source="api"))
-    # reserved lines whose shipment we know but which hasn't shipped yet
+    # shipments of paid, not-yet-completed orders that we have not seen leave yet - including lines that are
+    # not mapped to a SKU (their stock_state stays 'none', but the parcel still ships; Phase 9 backlog relies on it)
     pending = list(db.scalars(
-        select(SalesOrderLine.external_shipment_id).distinct().where(
-            SalesOrderLine.stock_state == "reserved", SalesOrderLine.external_shipment_id.is_not(None))
-        .limit(500)))
+        select(SalesOrderLine.external_shipment_id).distinct()
+        .join(SalesOrder, SalesOrder.id == SalesOrderLine.order_id)
+        .outerjoin(SalesShipment, SalesShipment.external_id == SalesOrderLine.external_shipment_id)
+        .where(SalesOrderLine.external_shipment_id.is_not(None),
+               (SalesOrderLine.stock_state == "reserved") | (SalesOrder.status == "pending_fulfillment"),
+               (SalesShipment.id.is_(None)) | (SalesShipment.status.not_in(SHIPPED_STATUSES)))
+        .limit(1000)))
     for sid in pending:
         known = db.scalar(select(SalesShipment.status).where(SalesShipment.external_id == sid))
         if sid not in seen and known not in SHIPPED_STATUSES:
@@ -167,6 +172,10 @@ def run(db: Session, client: WhatnotClient, *, days: int | None = None,
         db.commit()
         return run
     now = datetime.now(UTC)
+    # we hold the lock, so any other 'running' row was left behind by a process that died (restart, deploy)
+    db.execute(text("""UPDATE sync_runs SET status = 'failed', finished_at = now(),
+                       error = 'interrupted (server restarted before the sync finished)'
+                       WHERE platform = 'whatnot' AND status = 'running'"""))
     run = SyncRun(platform="whatnot", kind="+".join(kinds), window_start=now - timedelta(days=days), window_end=now)
     db.add(run)
     db.commit()

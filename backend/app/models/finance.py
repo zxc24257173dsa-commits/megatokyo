@@ -24,7 +24,8 @@ EXPENSE_TYPES = (
     "operating_expense", "other_expense",
 )
 # Signed: late landed-cost corrections; refunds won back on appeal / carrier adjustments (either direction)
-SIGNED_TYPES = ("cogs_adjustment", "refund_adjustment", "shipping_adjustment")
+# inventory_adjustment: stock written off (damage, count shortage, lost in transit) or found (count surplus)
+SIGNED_TYPES = ("cogs_adjustment", "refund_adjustment", "shipping_adjustment", "inventory_adjustment")
 ENTRY_TYPES = INCOME_TYPES + EXPENSE_TYPES + SIGNED_TYPES
 SOURCE_TYPES = ("api", "webhook", "csv", "manual", "system")
 
@@ -33,7 +34,7 @@ def _sign_rule() -> str:
     inc = ", ".join(f"'{t}'" for t in INCOME_TYPES)
     exp = ", ".join(f"'{t}'" for t in EXPENSE_TYPES)
     return (
-        "reversal_of_id IS NOT NULL OR entry_type IN ('cogs_adjustment', 'refund_adjustment', 'shipping_adjustment')"
+        "reversal_of_id IS NOT NULL OR entry_type IN ('cogs_adjustment', 'refund_adjustment', 'shipping_adjustment', 'inventory_adjustment')"
         f" OR (entry_type IN ({inc}) AND amount_base >= 0)"
         f" OR (entry_type IN ({exp}) AND amount_base <= 0)"
     )

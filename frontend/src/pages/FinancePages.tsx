@@ -18,6 +18,7 @@ interface Lines {
   shipping: number;
   platform_costs: number;
   cogs: number;
+  shrinkage: number;
   gross_profit: number;
   gross_margin_pct: number | null;
   other: number;
@@ -104,7 +105,7 @@ export function PnlPage() {
   const ROWS: [keyof Lines, string, boolean?][] = [
     ["sales", "商品銷售額"], ["discounts", "優惠券"], ["refunds", "退款"], ["net_sales", "淨銷售額", true],
     ["commission", "Whatnot 佣金"], ["processing", "金流手續費"], ["shipping", "賣家付的運費"],
-    ["cogs", "商品成本"], ["gross_profit", "毛利", true],
+    ["cogs", "商品成本"], ["shrinkage", "存貨損耗／盤盈"], ["gross_profit", "毛利", true],
   ];
 
   return (

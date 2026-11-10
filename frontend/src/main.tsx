@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider, useAuth } from "./auth";
+import { LogisticsPage, ParcelPage } from "./pages/LogisticsPages";
 import { TrendsPage } from "./pages/TrendsPage";
 import { ExpensesPage, PnlPage } from "./pages/FinancePages";
 import { ShowReportPage, ShowReportsPage } from "./pages/ShowReportPages";
@@ -46,6 +47,8 @@ function Gate() {
         <Route path="imports/:id" element={<ImportDetailPage />} />
         <Route path="orders" element={<OrdersPage />} />
         <Route path="orders/:id" element={<OrderDetailPage />} />
+        <Route path="logistics" element={<LogisticsPage />} />
+        <Route path="logistics/parcels/:id" element={<ParcelPage />} />
         <Route path="reports/trends" element={<TrendsPage />} />
         <Route path="reports/pnl" element={<PnlPage />} />
         <Route path="expenses" element={<ExpensesPage />} />

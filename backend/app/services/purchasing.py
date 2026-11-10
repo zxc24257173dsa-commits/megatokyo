@@ -62,7 +62,7 @@ def _lock_line(db: Session, line_id: int) -> PurchaseLine:
 
 
 def ship_line(db: Session, *, actor_id: int, line_id: int, qty: int, shipped_on: date | None,
-              idempotency_key: str, ctx: RequestContext) -> InventoryMovement:
+              idempotency_key: str, ctx: RequestContext, shipment_line_id: int | None = None) -> InventoryMovement:
     key = f"ship:{idempotency_key}"
     if existing := db.scalar(select(InventoryMovement).where(InventoryMovement.idempotency_key == key)):
         return existing
@@ -76,7 +76,7 @@ def ship_line(db: Session, *, actor_id: int, line_id: int, qty: int, shipped_on:
     when = _when(shipped_on)
     lot = InventoryLot(sku_id=line.sku_id, lot_no=f"PL{line.id}-{shipped + 1}-{shipped + qty}", source="purchase",
                        purchase_line_id=line.id, received_at=when, original_qty=qty,
-                       original_unit_cost_base=line.landed_unit_cost_base)
+                       original_unit_cost_base=line.landed_unit_cost_base, shipment_line_id=shipment_line_id)
     db.add(lot)
     db.flush()
     eta = (when + timedelta(days=lead_time_days(db))).date()
@@ -105,6 +105,7 @@ def receive_line_in_us(db: Session, *, actor_id: int, line_id: int, qty: int, re
     rows = db.execute(text("""
         SELECT b.lot_id, b.qty FROM inventory_balances b JOIN inventory_lots l ON l.id = b.lot_id
          WHERE l.purchase_line_id = :line AND b.location_id = :transit AND b.qty > 0
+           AND l.shipment_line_id IS NULL  -- goods sent in a parcel are received on the parcel (Phase 9)
          ORDER BY l.received_at, l.id
            FOR UPDATE OF b"""), {"line": line.id, "transit": transit.id}).all()
     available = sum(r.qty for r in rows)
@@ -195,10 +196,16 @@ def batch_detail(db: Session, batch_id: int, *, with_cost: bool) -> dict:
         shipments = db.execute(text("""
             SELECT l.received_at AS shipped_at, l.original_qty AS qty,
                    COALESCE((SELECT sum(b.qty) FROM inventory_balances b JOIN locations loc ON loc.id = b.location_id
-                              WHERE b.lot_id = l.id AND loc.code = 'IN_TRANSIT'), 0)::int AS in_transit
-              FROM inventory_lots l WHERE l.purchase_line_id = :line ORDER BY l.received_at, l.id"""),
+                              WHERE b.lot_id = l.id AND loc.code = 'IN_TRANSIT'), 0)::int AS in_transit,
+                   sh.id AS parcel_id, sh.shipment_no AS parcel_no, sh.eta AS parcel_eta
+              FROM inventory_lots l
+              LEFT JOIN shipment_lines sl ON sl.id = l.shipment_line_id
+              LEFT JOIN shipments sh ON sh.id = sl.shipment_id
+             WHERE l.purchase_line_id = :line ORDER BY l.received_at, l.id"""),
             {"line": d["id"]}).mappings().all()
-        d["shipments"] = [{**dict(s), "eta": (s["shipped_at"] + timedelta(days=lead)).date()} for s in shipments]
+        d["shipments"] = [{**dict(s), "eta": s["parcel_eta"] or (s["shipped_at"] + timedelta(days=lead)).date()}
+                          for s in shipments]
+        d["unparcelled_in_transit"] = sum(s["in_transit"] for s in shipments if s["parcel_id"] is None)
         if not with_cost:
             for k in cost_keys:
                 d.pop(k)

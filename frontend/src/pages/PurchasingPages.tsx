@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { CreateParcelCard } from "./LogisticsPages";
 import { api, newIdempotencyKey } from "../api";
 import { useAuth } from "../auth";
 import { ErrorBox, Loading, fmtDate, fmtDateTime, fmtInt, fmtUsd, useDebounced } from "../components/ui";
@@ -28,7 +29,8 @@ interface Line {
   shipped: number;
   in_transit: number;
   received_us: number;
-  shipments: { shipped_at: string; qty: number; in_transit: number; eta: string }[];
+  shipments: { shipped_at: string; qty: number; in_transit: number; eta: string; parcel_id: number | null; parcel_no: string | null }[];
+  unparcelled_in_transit: number;
   note: string | null;
   unit_price_orig?: string;
   currency_orig?: string;
@@ -119,8 +121,9 @@ export function PurchaseBatchPage() {
         </div>
       </div>
       <div className="alert info small">
-        成本紀錄已鎖定，不能修改或刪除。流程：日本按<b>「寄出」</b>→ 運送中（還不能賣，預計 {b.lead_time_days} 天到）→ 美國按<b>「簽收」</b>→ 變成美國可銷售庫存。
+        成本紀錄已鎖定，不能修改或刪除。流程：日本按<b>「建立寄出包裹」</b>填追蹤號碼 → 運送中（還不能賣，預計 {b.lead_time_days} 天到）→ 美國在<Link to="/logistics">物流</Link>的包裹頁<b>「簽收」</b>→ 變成美國可銷售庫存。
       </div>
+      {can("shipment.manage_jp") && <CreateParcelCard lines={b.lines} batchId={id} />}
       {b.lines.map((l) => (
         <div className="card" key={l.id}>
           <div className="page-head" style={{ marginBottom: 8 }}>
@@ -142,16 +145,15 @@ export function PurchaseBatchPage() {
           {l.shipments.some((x) => x.in_transit > 0) && (
             <div className="small" style={{ marginBottom: 10 }}>
               {l.shipments.filter((x) => x.in_transit > 0).map((x, i) => (
-                <div key={i} className="muted">運送中 {fmtInt(x.in_transit)} 件：{fmtDate(x.shipped_at)} 寄出，預計 {fmtDate(x.eta)} 到美國</div>
+                <div key={i} className="muted">運送中 {fmtInt(x.in_transit)} 件：{fmtDate(x.shipped_at)} 寄出，預計 {fmtDate(x.eta)} 到美國
+                  {x.parcel_id && <>・包裹 <Link to={`/logistics/parcels/${x.parcel_id}`} className="mono">{x.parcel_no}</Link></>}</div>
               ))}
             </div>
           )}
           <div className="stack">
-            {can("shipment.manage_jp") && l.shipped < l.qty && (
-              <LineAction line={l} batchId={id} action="ship" max={l.qty - l.shipped} label="從日本寄出" hint={`尚未寄出 ${fmtInt(l.qty - l.shipped)} 件`} />
-            )}
-            {can("shipment.receive_us") && l.in_transit > 0 && (
-              <LineAction line={l} batchId={id} action="receive" max={l.in_transit} label="美國簽收" hint={`運送中 ${fmtInt(l.in_transit)} 件`} />
+            {/* goods shipped before parcels existed are still received per line */}
+            {can("shipment.receive_us") && l.unparcelled_in_transit > 0 && (
+              <LineAction line={l} batchId={id} action="receive" max={l.unparcelled_in_transit} label="美國簽收" hint={`運送中（未建包裹）${fmtInt(l.unparcelled_in_transit)} 件`} />
             )}
           </div>
         </div>

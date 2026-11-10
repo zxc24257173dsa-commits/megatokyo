@@ -62,6 +62,8 @@ class InventoryLot(IdMixin, CreatedMixin, Base):
     original_unit_cost_base: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
     # For lots created by opening a box: the box lot the contents came from (cost traceability).
     parent_lot_id: Mapped[int | None] = mapped_column(ForeignKey("inventory_lots.id"))
+    # the inbound parcel this lot travelled in (Phase 9); set at creation, lots are append-only
+    shipment_line_id: Mapped[int | None] = mapped_column(ForeignKey("shipment_lines.id"), index=True)
     base_currency: Mapped[str] = mapped_column(ForeignKey("currencies.code"), nullable=False, server_default="USD")
 
     __table_args__ = (

@@ -13,6 +13,7 @@
 | 商品銷售額 − 優惠券 − 退款 = **淨銷售額** | revenue、sales_discount、refund／refund_adjustment |
 | Whatnot 佣金、金流手續費、賣家付的運費 | platform_fee、payment_processing_fee、shipping_cost／shipping_adjustment |
 | 商品成本 | cogs、cogs_adjustment（採購批次先進先出） |
+| 存貨損耗／盤盈 | inventory_adjustment（[docs/09](09-logistics.md)） |
 | **毛利** | |
 | 其他收入／支出 | other_income（小費等）、other_expense |
 | 營運費用（依類別） | operating_expense |

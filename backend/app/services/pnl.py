@@ -10,6 +10,7 @@ Read only from the ledger (financial_entries) by business date (entry_date):
   payment processing       payment_processing_fee                > platform costs
   seller-paid shipping     shipping_cost, shipping_adjustment   /
   cost of goods            cogs, cogs_adjustment
+  inventory loss / gain    inventory_adjustment (damage, count differences, lost in transit)
   = gross profit
   other income / expense   other_income, shipping_income, other_expense
   operating expenses       operating_expense (by category; voids are reversal entries)
@@ -34,6 +35,7 @@ GROUP = {
     "platform_fee": "commission", "payment_processing_fee": "processing", "shipping_cost": "shipping",
     "shipping_adjustment": "shipping", "cogs": "cogs", "cogs_adjustment": "cogs", "other_income": "other",
     "shipping_income": "other", "other_expense": "other", "operating_expense": "opex",
+    "inventory_adjustment": "shrinkage",
 }
 MAX_BUCKETS = 120
 
@@ -70,13 +72,13 @@ def _lines(b: dict[str, Decimal], opex_by_cat: dict[str, Decimal]) -> dict:
     g = lambda k: b.get(k) or ZERO  # noqa: E731
     net_sales = g("sales") + g("discounts") + g("refunds")
     platform = g("commission") + g("processing") + g("shipping")
-    gross = net_sales + platform + g("cogs")
+    gross = net_sales + platform + g("cogs") + g("shrinkage")
     net = gross + g("other") + g("opex")
     pct = lambda v: float(round(v / net_sales * 100, 1)) if net_sales > 0 else None  # noqa: E731
     return {
         "sales": _f(g("sales")), "discounts": _f(g("discounts")), "refunds": _f(g("refunds")), "net_sales": _f(net_sales),
         "commission": _f(g("commission")), "processing": _f(g("processing")), "shipping": _f(g("shipping")),
-        "platform_costs": _f(platform), "cogs": _f(g("cogs")), "gross_profit": _f(gross), "gross_margin_pct": pct(gross),
+        "platform_costs": _f(platform), "cogs": _f(g("cogs")), "shrinkage": _f(g("shrinkage")), "gross_profit": _f(gross), "gross_margin_pct": pct(gross),
         "other": _f(g("other")), "opex": _f(g("opex")), "opex_by_category": {k: _f(v) for k, v in opex_by_cat.items()},
         "net_profit": _f(net), "net_margin_pct": pct(net),
     }

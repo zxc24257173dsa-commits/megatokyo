@@ -36,6 +36,7 @@ GROUPS = {
     "platform_fee": "commission", "payment_processing_fee": "processing", "shipping_cost": "shipping",
     "shipping_adjustment": "shipping", "cogs": "cogs", "cogs_adjustment": "cogs", "other_income": "other",
     "shipping_income": "other", "other_expense": "other", "operating_expense": "opex",
+    "inventory_adjustment": "other",  # not tied to a show in practice
 }
 LINES = ("sales", "discounts", "refunds", "commission", "processing", "shipping", "cogs", "other")  # -> gross profit
 PAID = ("pending_fulfillment", "completed")

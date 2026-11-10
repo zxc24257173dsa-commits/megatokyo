@@ -81,7 +81,34 @@ def post_movement(db: Session, *, sku_id: int, lot_id: int, movement_type: str, 
     )
     db.add(m)
     db.flush()  # triggers validate direction and update balances here
+    if movement_type in LOSS_TYPES or movement_type in GAIN_TYPES:
+        _book_inventory_adjustment(db, m)
     return m
+
+
+# Stock written off or found changes profit, not just stock (Phase 9): the lot's FIFO cost is booked as
+# an inventory_adjustment ledger entry. Opening stock, box opening and returns are not gains or losses.
+LOSS_TYPES = ("damage", "adjustment_out", "transfer_loss")
+GAIN_TYPES = ("adjustment_in",)
+
+
+def _book_inventory_adjustment(db: Session, m: InventoryMovement) -> None:
+    from app.models.finance import FinancialEntry
+    from app.services import ledger
+    unit = _lot_unit_cost(db, m.lot_id)
+    amount = (m.qty * unit * (-1 if m.movement_type in LOSS_TYPES else 1)).quantize(Decimal("0.0001"))
+    if amount == 0:
+        return
+    when = m.occurred_at or _now()
+    day, moved = ledger.booking_date(db, ledger.biz_date(when))
+    label = {"damage": "損壞報廢", "adjustment_out": "庫存調整減少", "transfer_loss": "運送短少",
+             "adjustment_in": "庫存調整增加"}[m.movement_type]
+    db.add(FinancialEntry(
+        idempotency_key=f"invadj:{m.id}", entry_date=day, occurred_at=when, entry_type="inventory_adjustment",
+        amount_orig=amount, currency_orig="USD", fx_rate=Decimal(1), amount_base=amount, sku_id=m.sku_id,
+        source_type="system", source_ref=f"movement:{m.id}", created_by=m.created_by,
+        memo="；".join(x for x in (label, m.note, moved) if x)[:500]))
+    db.flush()
 
 
 def _lot_unit_cost(db: Session, lot_id: int) -> Decimal:

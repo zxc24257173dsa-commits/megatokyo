@@ -11,6 +11,7 @@
 - 單場直播損益、Whatnot 財務報表：[`docs/06-show-pnl.md`](docs/06-show-pnl.md)
 - 損益表、營運費用、月結：[`docs/07-pnl-and-expenses.md`](docs/07-pnl-and-expenses.md)
 - 銷售趨勢、商品動向與庫存：[`docs/08-sales-trends.md`](docs/08-sales-trends.md)
+- 物流（包裹、交期、待出貨、存貨損耗）：[`docs/09-logistics.md`](docs/09-logistics.md)
 
 ## 目前進度
 
