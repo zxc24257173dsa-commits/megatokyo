@@ -12,6 +12,12 @@ function Fail($m) {
     Read-Host "按 Enter 關閉"
     exit 1
 }
+function FixedUrl() {
+    if (-not (Test-Path ".env")) { return $null }
+    $m = Select-String -Path ".env" -Pattern '^ERP_PUBLIC_BASE_URL=(https://\S+)$' | Select-Object -First 1
+    if ($m -and $m.Matches[0].Groups[1].Value -notmatch 'localhost') { return $m.Matches[0].Groups[1].Value }
+    return $null
+}
 function RandBytes($n) {
     $b = New-Object byte[] $n
     [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b)
@@ -68,7 +74,8 @@ if ($first) {
         "POSTGRES_PASSWORD=$(RandText 40)",
         "ERP_JWT_SECRET=$(RandText 64)",
         "ERP_DATA_ENCRYPTION_KEY=$([Convert]::ToBase64String((RandBytes 32)))",
-        "ERP_CRON_SECRET=$(RandText 48)"
+        "ERP_CRON_SECRET=$(RandText 48)",
+        "COMPOSE_PROFILES=cloudflare"
     )
     [System.IO.File]::WriteAllLines((Join-Path $PSScriptRoot ".env"), $lines, (New-Object System.Text.UTF8Encoding($false)))
     # restoring a backup on another computer needs these keys too
@@ -77,6 +84,9 @@ if ($first) {
 } else {
     Say "2/5 使用既有的密鑰與資料"
 }
+
+# older installs: keep the Cloudflare address running unless a fixed address was set up
+if (-not (Select-String -Path ".env" -Pattern '^COMPOSE_PROFILES=' -Quiet)) { Add-Content -Path ".env" -Value "COMPOSE_PROFILES=cloudflare" }
 
 # ---------- 3. Build + database ----------
 Say "3/5 準備系統（第一次約 5～15 分鐘，之後很快）"
@@ -120,8 +130,9 @@ if ($needAdmin) {
 
 # ---------- 5. Address for colleagues ----------
 Say "5/5 取得給同事用的網址"
-$url = $null
-for ($i = 0; $i -lt 45; $i++) {
+$url = FixedUrl
+$fixed = [bool]$url
+for ($i = 0; (-not $url) -and $i -lt 45; $i++) {
     $log = (docker compose logs tunnel 2>&1 | Out-String)
     $m = [regex]::Matches($log, "https://[a-z0-9-]+\.trycloudflare\.com")
     if ($m.Count -gt 0) { $url = $m[$m.Count - 1].Value; break }
@@ -130,7 +141,8 @@ for ($i = 0; $i -lt 45; $i++) {
 $txt = @("這台電腦：http://localhost:8080")
 if ($url) {
     $txt += "同事（任何地方的手機或電腦）：$url"
-    $txt += "注意：這台電腦重新開機或按「停止」之後，同事的網址會換一個新的，請再按「顯示網址」查看。"
+    if ($fixed) { $txt += "這是固定網址，重新開機也不會變。" }
+    else { $txt += "注意：這台電腦重新開機或按「停止」之後，同事的網址會換一個新的，請再按「顯示網址」查看。（雙擊「設定固定網址.bat」可以改成固定網址）" }
 } else {
     $txt += "同事用的網址還沒產生，請等 1 分鐘後按「顯示網址」。"
 }

@@ -35,6 +35,9 @@ if ($volume -and (Test-Path ".env")) {
     $cur = ReadEnv ".env"
     if ($cur.Contains("POSTGRES_PASSWORD")) { $old["POSTGRES_PASSWORD"] = $cur["POSTGRES_PASSWORD"] }
 }
+# the old computer's fixed address belongs to that computer: start here with the Cloudflare address
+if ($old.Contains("ERP_PUBLIC_BASE_URL")) { $old.Remove("ERP_PUBLIC_BASE_URL") }
+$old["COMPOSE_PROFILES"] = "cloudflare"
 $lines = @("# Megatokyo ERP secrets for this computer (restored from $($pack.Name)). Keep a copy; never share.")
 foreach ($k in $old.Keys) { $lines += "$k=$($old[$k])" }
 [System.IO.File]::WriteAllLines((Join-Path $PSScriptRoot ".env"), $lines, (New-Object System.Text.UTF8Encoding($false)))

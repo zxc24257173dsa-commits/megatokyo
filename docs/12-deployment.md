@@ -11,6 +11,7 @@
 | `啟動.bat`（`install.ps1`） | 第一次：檢查 Docker Desktop、產生這台電腦專用的密鑰、建置系統、更新資料庫、建立管理員帳號、取得同事用網址；之後：啟動或更新到新版本（資料保留） |
 | `停止.bat` | 暫停系統，資料保留 |
 | `顯示網址.bat` | 查看同事用的網址 |
+| `設定固定網址.bat`（`fixed-url.ps1`） | 用 Tailscale Funnel（免費）取得固定的 https 網址（`https://<電腦>.<tailnet>.ts.net` → `localhost:8080`），寫入 `ERP_PUBLIC_BASE_URL`，關掉 Cloudflare 臨時網址（`COMPOSE_PROFILES`） |
 | `做搬家包.bat`（`pack.ps1`） | 把資料庫、照片收據、鑰匙打包成 `backups/move-<日期>`（搬到別台電腦或換電腦用） |
 | `還原搬家包.bat`（`restore.ps1`） | 在新電腦還原搬家包：使用搬家包的鑰匙（加密資料才打得開），沿用這台已有資料庫的密碼；還原資料庫、照片收據，更新到最新版本後啟動 |
 | `docker-compose.yml` | 五個服務：資料庫、ERP、排程、備份、對外網址 |
@@ -52,7 +53,7 @@
 
 ### 已知限制
 
-- 同事網址在電腦重開後會改變（Cloudflare 免費快速通道的特性）。要固定網址，可以用自己的網域搭配 Cloudflare 具名通道，或改租主機。
+- 預設的 Cloudflare 免費網址在電腦重開後會改變；執行「設定固定網址.bat」改用 Tailscale Funnel 後網址固定（需在這台電腦安裝並登入 Tailscale）。Tailscale 部分無法在這裡驗證，要在業主電腦上確認。
 - 這台電腦關機、睡眠、斷網時，大家都無法使用。
 
 ## 之後改租主機

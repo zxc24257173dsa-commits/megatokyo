@@ -5,7 +5,8 @@
 #   app        the ERP (web + API) on http://localhost:8080 (this computer only)
 #   scheduler  Whatnot sync every hour, Whatnot notifications every minute
 #   backup     database + uploaded files every day into selfhost/backups (kept 30 days)
-#   tunnel     a free https address (Cloudflare) so colleagues anywhere can open the ERP
+#   tunnel     a free https address (Cloudflare, changes after a restart) so colleagues anywhere can open the ERP;
+#              replaced by a fixed Tailscale address once 設定固定網址.bat has been run
 name: megatokyo
 
 x-app-env: &app-env
@@ -99,6 +100,7 @@ services:
 
   tunnel:
     image: mirror.gcr.io/cloudflare/cloudflared:latest
+    profiles: ["cloudflare"]   # COMPOSE_PROFILES=cloudflare in .env; turned off by 設定固定網址.bat (Tailscale)
     restart: unless-stopped
     command: ["tunnel", "--no-autoupdate", "--url", "http://app:8080"]
     depends_on:
