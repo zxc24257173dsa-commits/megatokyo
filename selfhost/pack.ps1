@@ -5,6 +5,28 @@ Set-Location -Path $PSScriptRoot
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 function Fail($m) { Write-Host ""; Write-Host $m -ForegroundColor Red; Read-Host "按 Enter 關閉"; exit 1 }
 
+# If this folder is not where the system was installed, say where it is (the running containers know).
+function RealFolder() {
+    $labels = docker inspect megatokyo-app-1 --format "{{json .Config.Labels}}" 2>$null
+    if ($LASTEXITCODE -ne 0 -or -not $labels) { return $null }
+    $dir = ($labels | ConvertFrom-Json).'com.docker.compose.project.working_dir'
+    if ($dir -and ((Resolve-Path $dir -ErrorAction SilentlyContinue).Path -ne (Resolve-Path $PSScriptRoot).Path)) { return $dir.Trim() }
+    return $null
+}
+function WrongFolderCheck() {
+    if (Test-Path ".env") { return }
+    $real = RealFolder
+    if ($real) {
+        Write-Host ""
+        Write-Host "這個資料夾不是系統安裝的位置。系統裝在：" -ForegroundColor Yellow
+        Write-Host "  $real" -ForegroundColor Cyan
+        Write-Host "已幫您打開那個資料夾。請把這裡的新檔案複製過去（選「取代」），再在那裡操作。" -ForegroundColor Yellow
+        Start-Process explorer.exe $real
+        Read-Host "按 Enter 關閉"
+        exit 1
+    }
+}
+WrongFolderCheck
 if (-not (Test-Path ".env")) { Fail "這台電腦還沒安裝過系統（找不到 .env），沒有東西可以打包。" }
 docker info *> $null
 if ($LASTEXITCODE -ne 0) { Fail "Docker Desktop 沒有開。請先打開 Docker Desktop，等出現「Engine running」再試一次。" }
